@@ -2,9 +2,13 @@
 
 import type { UIMessage } from 'ai';
 import { Bot, User } from 'lucide-react';
-import type { EmergencyResult, SearchResult, TransportTicketResult } from './types';
 import type { Destination } from '@/lib/mockData';
-import type { EmergencyResult, ReservationResult, SearchResult } from './types';
+import type {
+  EmergencyResult,
+  ReservationResult,
+  SearchResult,
+  TransportTicketResult,
+} from './types';
 import { dedupeToolPartsForRender } from '@/lib/message-parts';
 import type { BookingDetails } from './tool-cards';
 import {

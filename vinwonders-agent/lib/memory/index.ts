@@ -32,7 +32,7 @@ export function prepareConversationContext(
   );
 
   const memoryFacts = extractSessionFacts(
-    prunedMessages.length > 0 ? messages : [],
+    prunedMessages.length > 0 ? prunedMessages : [],
   );
   const memorySummary = buildMemorySummary(memoryFacts);
 

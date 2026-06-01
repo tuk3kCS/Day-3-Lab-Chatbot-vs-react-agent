@@ -73,7 +73,7 @@ function getUserId(req: Request, requestId: string): string {
   return req.headers.get('x-user-id') ?? `anon-${requestId.slice(0, 8)}`;
 }
 
-function buildAgentTools() {
+function buildAgentTools(messages: UIMessage[], lastUserText: string) {
   return {
     searchDestination: tool({
       description:
@@ -99,7 +99,8 @@ function buildAgentTools() {
         dateTime: z.string().optional(),
         notes: z.string().optional(),
       }),
-      execute: async (input) => runBookRestaurant(input, [], ''),
+      execute: async (input) =>
+        runBookRestaurant(input, messages, lastUserText),
     }),
     handleEmergency: tool({
       description: 'Xử lý mất đồ, lạc trẻ em, sự cố y tế khẩn cấp.',
@@ -384,7 +385,7 @@ export async function POST(req: Request) {
 
 Công cụ: searchDestination, bookRestaurant, handleEmergency, buyTransportTicket — chỉ khi in-scope VinWonders.
 Không gọi lại công cụ đã có kết quả; không lộ email/SĐT/CCCD trong câu trả lời trừ khi khách vừa cung cấp để đặt phòng.`,
-      tools: buildAgentTools(),
+      tools: buildAgentTools(messages, lastUserText),
       stopWhen: stepCountIs(AGENT_LIMITS.maxAgentToolSteps),
       ...getStreamSettings(),
       onFinish: createOnFinish(baseMeta, validator),

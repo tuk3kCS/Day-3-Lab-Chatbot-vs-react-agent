@@ -81,6 +81,7 @@ export async function runBuyTransportTicket(
   departureTime?: string,
 ) {
   const destKey = destination.toLowerCase().replace(/\s+/g, '_');
+  const displayTo = DESTINATION_DISPLAY[destKey] ?? destination;
   const routeInfo = TRANSPORT_ROUTES[destKey] ?? {
     route: 'Tuyến B1',
     boardingPoint: 'Bến xe buýt Cổng chính',
@@ -97,7 +98,7 @@ export async function runBuyTransportTicket(
     status: 'success' as const,
     ticketId,
     from: 'Cổng chính VinWonders',
-    to: destination,
+    to: displayTo,
     route: routeInfo.route,
     departureTime: departure,
     quantity,
@@ -125,6 +126,9 @@ export type ServerTool =
         quantity: number;
         passengerType: 'adult' | 'child' | 'senior' | 'disabled';
         departureTime?: string;
+      };
+    }
+  | {
       name: 'bookRestaurant';
       input: {
         restaurantId?: string;
@@ -171,6 +175,14 @@ const DESTINATION_NAMES: Record<string, string> = {
   'trung tam': 'central',
 };
 
+const DESTINATION_DISPLAY: Record<string, string> = {
+  grand_world: 'Grand World',
+  safari: 'Safari',
+  ocean_park: 'Ocean Park',
+  adventure_world: 'Adventure World',
+  central: 'Trung tâm',
+};
+
 function extractTransportDestination(text: string): string {
   const lower = text.toLowerCase();
   for (const [key, value] of Object.entries(DESTINATION_NAMES)) {
@@ -181,7 +193,8 @@ function extractTransportDestination(text: string): string {
 
 function extractQuantity(text: string): number {
   const match = text.match(/(\d+)\s*(vé|ve|người|nguoi|ticket|person)/i);
-  return match ? parseInt(match[1], 10) : 1;
+  const quantity = match ? parseInt(match[1], 10) : 1;
+  return Math.min(20, Math.max(1, quantity));
 }
 
 function extractPassengerType(text: string): 'adult' | 'child' | 'senior' | 'disabled' {
@@ -192,7 +205,6 @@ function extractPassengerType(text: string): 'adult' | 'child' | 'senior' | 'dis
   return 'adult';
 }
 
-export function detectServerTool(text: string): ServerTool | null {
 function parseBookInput(
   text: string,
 ): Extract<ServerTool, { name: 'bookRestaurant' }>['input'] | null {
@@ -260,10 +272,8 @@ export function detectServerTool(
     };
   }
 
-  // 5) Tìm kiếm địa điểm chung
-  if (SEARCH_FALLBACK.test(lower) && !SORRY_FALLBACK.test(lower)) {
-  // 4) Gợi ý / khám phá
-  if (EXPLORATION_INTENT.test(lower)) {
+  // 5) Gợi ý / khám phá
+  if (EXPLORATION_INTENT.test(lower) && !SORRY_FALLBACK.test(lower)) {
     const { keyword, category } = extractSearchKeyword(trimmed);
     return {
       name: 'searchDestination',
@@ -271,8 +281,8 @@ export function detectServerTool(
     };
   }
 
-  // 5) Tìm kiếm chung
-  if (SEARCH_FALLBACK.test(lower)) {
+  // 6) Tìm kiếm địa điểm chung
+  if (SEARCH_FALLBACK.test(lower) && !SORRY_FALLBACK.test(lower)) {
     const { keyword, category } = extractSearchKeyword(trimmed);
     return {
       name: 'searchDestination',
@@ -337,6 +347,8 @@ function getToolHint(toolName: string): string {
       return 'Chỉ xác nhận mã booking, giờ, số người — không ticket khẩn cấp, không quảng cáo thêm.';
     case 'handleEmergency':
       return 'Chỉ ticket, liên hệ, bước tiếp theo — không giải thích dài ngoài sự cố.';
+    case 'buyTransportTicket':
+      return 'Chỉ xác nhận mã vé, tuyến, giờ, bến lên xe — không thêm chủ đề khác.';
     default:
       return 'Tóm tắt surgical từ dữ liệu công cụ.';
   }

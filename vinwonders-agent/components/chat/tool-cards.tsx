@@ -12,11 +12,14 @@ import {
   ShieldAlert,
   Sparkles,
   Ticket,
-} from 'lucide-react';
-import type { EmergencyResult, SearchResult, TransportTicketResult } from './types';
   Users,
 } from 'lucide-react';
-import type { EmergencyResult, ReservationResult, SearchResult } from './types';
+import type {
+  EmergencyResult,
+  ReservationResult,
+  SearchResult,
+  TransportTicketResult,
+} from './types';
 
 export type { BookingDetails };
 
@@ -214,6 +217,11 @@ export function TransportTicketCard({ result }: { result: TransportTicketResult 
           <span className="text-xs text-zinc-400">Tổng thanh toán</span>
           <span className="text-base font-bold text-emerald-300">{priceText}</span>
         </div>
+      </div>
+    </article>
+  );
+}
+
 export function ReservationCard({ result }: { result: ReservationResult }) {
   const isConfirmed = result.status === 'confirmed';
 

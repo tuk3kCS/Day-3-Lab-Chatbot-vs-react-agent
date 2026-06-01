@@ -29,6 +29,8 @@ export type TransportTicketResult = {
   totalPrice: number;
   boardingPoint: string;
   message: string;
+};
+
 export type ReservationResult = {
   status: 'confirmed' | 'waitlist';
   bookingCode: string;
