@@ -79,6 +79,9 @@ const EMERGENCY_INCIDENT =
 const SEARCH_FALLBACK =
   /(mưa|mua|rain|tìm|tim|nhà hàng|nha hang|khách sạn|khach san|show|safari|zeus|buffet|ăn|an\b|đói|doi\b|hotel|resort)/i;
 
+const SORRY_FALLBACK =
+/(xin lỗi|sorry|bị lỗi|bi loi|không biết| không thể|khong biet|chưa rõ|chua ro|không chắc|khong chac)/i;
+
 export function detectServerTool(text: string): ServerTool | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -86,7 +89,7 @@ export function detectServerTool(text: string): ServerTool | null {
   const lower = trimmed.toLowerCase();
 
   // 1) Câu hỏi gợi ý / đi chơi → search (kể cả sau khi đã báo mất đồ trước đó)
-  if (EXPLORATION_INTENT.test(lower)) {
+  if (EXPLORATION_INTENT.test(lower) && !SORRY_FALLBACK.test(lower)) {
     const { keyword, category } = extractSearchKeyword(trimmed);
     return {
       name: 'searchDestination',
@@ -95,7 +98,7 @@ export function detectServerTool(text: string): ServerTool | null {
   }
 
   // 2) Y tế khẩn cấp
-  if (EMERGENCY_MEDICAL.test(lower)) {
+  if (EMERGENCY_MEDICAL.test(lower) && !SORRY_FALLBACK.test(lower)) {
     return {
       name: 'handleEmergency',
       input: { type: 'medical', description: trimmed },
@@ -103,7 +106,7 @@ export function detectServerTool(text: string): ServerTool | null {
   }
 
   // 3) Báo sự cố mất đồ / an ninh
-  if (EMERGENCY_INCIDENT.test(lower)) {
+  if (EMERGENCY_INCIDENT.test(lower) && !SORRY_FALLBACK.test(lower)) {
     return {
       name: 'handleEmergency',
       input: { type: 'lost_item', description: trimmed },
@@ -111,7 +114,7 @@ export function detectServerTool(text: string): ServerTool | null {
   }
 
   // 4) Tìm kiếm địa điểm chung
-  if (SEARCH_FALLBACK.test(lower)) {
+  if (SEARCH_FALLBACK.test(lower) && !SORRY_FALLBACK.test(lower)) {
     const { keyword, category } = extractSearchKeyword(trimmed);
     return {
       name: 'searchDestination',
