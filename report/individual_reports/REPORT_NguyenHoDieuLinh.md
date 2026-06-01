@@ -9,7 +9,7 @@
 
 ## I. Technical Contribution (15 Points)
 
-*Đóng góp chính vào codebase **vinwonders-agent/** (Next.js + AI SDK + Ollama). Chi tiết đầy đủ: [`reports/VINWONDERS_AGENT_INDIVIDUAL_REPORT.md`](../../reports/VINWONDERS_AGENT_INDIVIDUAL_REPORT.md).*
+*Đóng góp chính vào codebase **vinwonders-agent/** (Next.js + AI SDK + Ollama + tooldoc.md + Group report).*
 
 ### Mô tả đóng góp
 
@@ -101,8 +101,8 @@ stopWhen: stepCountIs(AGENT_LIMITS.maxAgentToolSteps),
 | Tài liệu | Nội dung |
 |----------|----------|
 | [`tooldoc.md`](../../tooldoc.md) | Evolution **v2.1** — Guardrails & Response Discipline, bảng so sánh, env vars |
-| [`reports/VINWONDERS_AGENT_INDIVIDUAL_REPORT.md`](../../reports/VINWONDERS_AGENT_INDIVIDUAL_REPORT.md) | Báo cáo kỹ thuật đầy đủ + test plan |
-| [`reports/GROUP_REPORT.md`](../../reports/GROUP_REPORT.md) | Tổng hợp nhóm — mapping deliverable → file |
+| [`GROUP_REPORT_Table_D1.md`](../group_report/GROUP_REPORT_Table_D1.md) | Báo cáo nhóm Table D1 — kiến trúc, telemetry, RCA, ablation |
+| [`REPORT_HoangDucTruong.md`](REPORT_HoangDucTruong.md) | E2E VinWonders, tools, logging, debug Ollama/AI SDK |
 
 **Tương tác với agent loop (VinWonders):** Khác ReAct Python (`Thought` → `Action` → `Observation`), VinWonders dùng **AI SDK tool loop** hoặc **server routing** (`detectServerTool` → tool stream → `streamText` tóm tắt). Guard được chèn **trước** vòng LLM/tool: policy/off-topic không vào loop; spam/tool guard giảm số vòng lặp và observation trùng.
 
