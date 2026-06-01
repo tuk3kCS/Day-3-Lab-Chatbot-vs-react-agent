@@ -55,6 +55,56 @@ export function getLastUserText(messages: UIMessage[]): string {
   return '';
 }
 
+const TRANSPORT_ROUTES: Record<string, { route: string; boardingPoint: string; durationMin: number }> = {
+  'grand_world':     { route: 'Tuyến B1', boardingPoint: 'Bến xe buýt Cổng chính',      durationMin: 8  },
+  'safari':          { route: 'Tuyến B2', boardingPoint: 'Bến xe buýt Khu Safari',       durationMin: 12 },
+  'ocean_park':      { route: 'Tuyến B3', boardingPoint: 'Bến xe buýt Khu Đại dương',    durationMin: 10 },
+  'adventure_world': { route: 'Tuyến B1', boardingPoint: 'Bến xe buýt Khu Phiêu lưu',   durationMin: 6  },
+  'central':         { route: 'Tuyến B4', boardingPoint: 'Bến xe buýt Trung tâm',        durationMin: 5  },
+};
+
+const PASSENGER_PRICES: Record<string, number> = {
+  adult:    50000,
+  child:    25000,
+  senior:   25000,
+  disabled: 0,
+};
+
+export async function runBuyTransportTicket(
+  destination: string,
+  quantity: number,
+  passengerType: 'adult' | 'child' | 'senior' | 'disabled',
+  departureTime?: string,
+) {
+  const destKey = destination.toLowerCase().replace(/\s+/g, '_');
+  const routeInfo = TRANSPORT_ROUTES[destKey] ?? {
+    route: 'Tuyến B1',
+    boardingPoint: 'Bến xe buýt Cổng chính',
+    durationMin: 10,
+  };
+
+  const pricePerTicket = PASSENGER_PRICES[passengerType] ?? 50000;
+  const totalPrice = pricePerTicket * quantity;
+  const ticketId = `VWT-${Math.floor(1000 + Math.random() * 9000)}`;
+  const departure = departureTime ?? 'Chuyến tiếp theo';
+  const priceText = totalPrice === 0 ? 'Miễn phí' : `${totalPrice.toLocaleString('vi-VN')}đ`;
+
+  return {
+    status: 'success' as const,
+    ticketId,
+    from: 'Cổng chính VinWonders',
+    to: destination,
+    route: routeInfo.route,
+    departureTime: departure,
+    quantity,
+    passengerType,
+    pricePerTicket,
+    totalPrice,
+    boardingPoint: routeInfo.boardingPoint,
+    message: `Đặt vé thành công! Mã vé: ${ticketId}. ${quantity} vé (${passengerType}) — ${priceText}. Lên xe tại: ${routeInfo.boardingPoint}. Giờ khởi hành: ${departure}. Thời gian di chuyển ~${routeInfo.durationMin} phút.`,
+  };
+}
+
 export type ServerTool =
   | {
       name: 'searchDestination';
@@ -63,6 +113,15 @@ export type ServerTool =
   | {
       name: 'handleEmergency';
       input: { type: 'lost_item' | 'medical' | 'other'; description: string };
+    }
+  | {
+      name: 'buyTransportTicket';
+      input: {
+        destination: string;
+        quantity: number;
+        passengerType: 'adult' | 'child' | 'senior' | 'disabled';
+        departureTime?: string;
+      };
     };
 
 /** Ý định hỏi gợi ý / khám phá — ưu tiên trước emergency để tránh false positive */
@@ -79,8 +138,45 @@ const EMERGENCY_INCIDENT =
 const SEARCH_FALLBACK =
   /(mưa|mua|rain|tìm|tim|nhà hàng|nha hang|khách sạn|khach san|show|safari|zeus|buffet|ăn|an\b|đói|doi\b|hotel|resort)/i;
 
+const TRANSPORT_INTENT =
+  /(xe buýt|xe buyt|bus|mua vé|mua ve|đặt vé|dat ve|vé xe|ve xe|đi xe|di xe|phương tiện|phuong tien|transport|ticket|di chuyển đến|di chuyen den|đến khu|den khu)/i;
+
 const SORRY_FALLBACK =
 /(xin lỗi|sorry|bị lỗi|bi loi|không biết| không thể|khong biet|chưa rõ|chua ro|không chắc|khong chac)/i;
+
+const DESTINATION_NAMES: Record<string, string> = {
+  'grand world': 'grand_world',
+  'safari': 'safari',
+  'ocean park': 'ocean_park',
+  'đại dương': 'ocean_park',
+  'dai duong': 'ocean_park',
+  'adventure': 'adventure_world',
+  'phiêu lưu': 'adventure_world',
+  'phieu luu': 'adventure_world',
+  'trung tâm': 'central',
+  'trung tam': 'central',
+};
+
+function extractTransportDestination(text: string): string {
+  const lower = text.toLowerCase();
+  for (const [key, value] of Object.entries(DESTINATION_NAMES)) {
+    if (lower.includes(key)) return value;
+  }
+  return 'grand_world';
+}
+
+function extractQuantity(text: string): number {
+  const match = text.match(/(\d+)\s*(vé|ve|người|nguoi|ticket|person)/i);
+  return match ? parseInt(match[1], 10) : 1;
+}
+
+function extractPassengerType(text: string): 'adult' | 'child' | 'senior' | 'disabled' {
+  const lower = text.toLowerCase();
+  if (/(trẻ em|tre em|child|kids?)/.test(lower)) return 'child';
+  if (/(người cao tuổi|nguoi cao tuoi|senior|elderly)/.test(lower)) return 'senior';
+  if (/(khuyết tật|khuyet tat|disabled)/.test(lower)) return 'disabled';
+  return 'adult';
+}
 
 export function detectServerTool(text: string): ServerTool | null {
   const trimmed = text.trim();
@@ -113,7 +209,19 @@ export function detectServerTool(text: string): ServerTool | null {
     };
   }
 
-  // 4) Tìm kiếm địa điểm chung
+  // 4) Mua vé xe buýt / phương tiện
+  if (TRANSPORT_INTENT.test(lower) && !SORRY_FALLBACK.test(lower)) {
+    return {
+      name: 'buyTransportTicket',
+      input: {
+        destination: extractTransportDestination(trimmed),
+        quantity: extractQuantity(trimmed),
+        passengerType: extractPassengerType(trimmed),
+      },
+    };
+  }
+
+  // 5) Tìm kiếm địa điểm chung
   if (SEARCH_FALLBACK.test(lower) && !SORRY_FALLBACK.test(lower)) {
     const { keyword, category } = extractSearchKeyword(trimmed);
     return {
@@ -133,6 +241,18 @@ export async function runServerTool(serverTool: ServerTool) {
       output: await runSearchDestination(
         serverTool.input.keyword,
         serverTool.input.category,
+      ),
+    };
+  }
+  if (serverTool.name === 'buyTransportTicket') {
+    return {
+      name: serverTool.name,
+      input: serverTool.input,
+      output: await runBuyTransportTicket(
+        serverTool.input.destination,
+        serverTool.input.quantity,
+        serverTool.input.passengerType,
+        serverTool.input.departureTime,
       ),
     };
   }

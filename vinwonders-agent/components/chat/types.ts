@@ -15,3 +15,18 @@ export type EmergencyResult = {
     contact_number?: string;
   };
 };
+
+export type TransportTicketResult = {
+  status: 'success' | 'error';
+  ticketId: string;
+  from: string;
+  to: string;
+  route: string;
+  departureTime: string;
+  quantity: number;
+  passengerType: string;
+  pricePerTicket: number;
+  totalPrice: number;
+  boardingPoint: string;
+  message: string;
+};

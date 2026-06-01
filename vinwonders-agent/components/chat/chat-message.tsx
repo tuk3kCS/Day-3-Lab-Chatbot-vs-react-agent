@@ -2,11 +2,12 @@
 
 import type { UIMessage } from 'ai';
 import { Bot, User } from 'lucide-react';
-import type { EmergencyResult, SearchResult } from './types';
+import type { EmergencyResult, SearchResult, TransportTicketResult } from './types';
 import {
   EmergencyCard,
   SearchDestinationCards,
   ToolLoadingCard,
+  TransportTicketCard,
 } from './tool-cards';
 
 function TypingIndicator() {
@@ -91,6 +92,20 @@ export function ChatMessage({
                 <SearchDestinationCards
                   key={index}
                   result={part.output as SearchResult}
+                />
+              );
+            }
+          }
+
+          if (part.type === 'tool-buyTransportTicket') {
+            if (part.state === 'input-available' || part.state === 'input-streaming') {
+              return <ToolLoadingCard key={index} label="Đang đặt vé xe buýt..." />;
+            }
+            if (part.state === 'output-available') {
+              return (
+                <TransportTicketCard
+                  key={index}
+                  result={part.output as TransportTicketResult}
                 />
               );
             }

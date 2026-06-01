@@ -3,6 +3,7 @@ import {
   getLastUserText,
   runSearchDestination,
   runHandleEmergency,
+  runBuyTransportTicket,
   runServerTool,
 } from '@/lib/agent-tools';
 import { prepareConversationContext } from '@/lib/memory';
@@ -58,6 +59,19 @@ const agentTools = {
     }),
     execute: async ({ type, description }) =>
       runHandleEmergency(type, description),
+  }),
+  buyTransportTicket: tool({
+    description: 'Mua vé xe buýt công cộng để di chuyển đến các khu trong VinWonders.',
+    inputSchema: z.object({
+      destination: z.string().describe('Tên khu/điểm đến (ví dụ: safari, grand_world, ocean_park)'),
+      quantity: z.number().int().min(1).max(20).describe('Số lượng vé'),
+      passengerType: z
+        .enum(['adult', 'child', 'senior', 'disabled'])
+        .describe('Loại hành khách'),
+      departureTime: z.string().optional().describe('Giờ khởi hành mong muốn (tùy chọn)'),
+    }),
+    execute: async ({ destination, quantity, passengerType, departureTime }) =>
+      runBuyTransportTicket(destination, quantity, passengerType, departureTime),
   }),
 };
 
@@ -133,6 +147,8 @@ export async function POST(req: Request) {
             const toolHint =
               name === 'searchDestination'
                 ? 'Khách đang hỏi gợi ý địa điểm — KHÔNG tạo ticket khẩn cấp mới; chỉ gợi ý chỗ chơi/ăn phù hợp.'
+                : name === 'buyTransportTicket'
+                ? 'Tóm tắt thông tin vé xe buýt cho khách: mã vé, tuyến xe, bến lên xe, giờ khởi hành, tổng tiền.'
                 : 'Tóm tắt kết quả khẩn cấp cho khách.';
 
             const summary = streamText({
@@ -165,7 +181,8 @@ export async function POST(req: Request) {
     messages: modelMessages,
     system: `${system}
 Nếu khách hỏi địa điểm → gọi searchDestination.
-Nếu khách báo mất đồ / y tế khẩn cấp → gọi handleEmergency.`,
+Nếu khách báo mất đồ / y tế khẩn cấp → gọi handleEmergency.
+Nếu khách muốn mua vé xe buýt / hỏi phương tiện di chuyển → gọi buyTransportTicket.`,
     tools: agentTools,
     onFinish,
   });

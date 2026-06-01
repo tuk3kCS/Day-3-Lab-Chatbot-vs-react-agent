@@ -1,14 +1,16 @@
 import { TYPE_LABELS } from '@/lib/search';
 import type { Destination } from '@/lib/mockData';
 import {
+  Bus,
   Clock,
   Loader2,
   MapPin,
   Phone,
   ShieldAlert,
   Sparkles,
+  Ticket,
 } from 'lucide-react';
-import type { EmergencyResult, SearchResult } from './types';
+import type { EmergencyResult, SearchResult, TransportTicketResult } from './types';
 
 const TYPE_STYLES: Record<Destination['type'], string> = {
   ride: 'bg-purple-500/15 text-purple-300',
@@ -85,6 +87,72 @@ export function SearchDestinationCards({ result }: { result: SearchResult }) {
         <DestinationCard key={dest.id} dest={dest} />
       ))}
     </div>
+  );
+}
+
+export function TransportTicketCard({ result }: { result: TransportTicketResult }) {
+  const priceText =
+    result.totalPrice === 0 ? 'Miễn phí' : `${result.totalPrice.toLocaleString('vi-VN')}đ`;
+
+  const passengerLabels: Record<string, string> = {
+    adult: 'Người lớn',
+    child: 'Trẻ em',
+    senior: 'Cao tuổi',
+    disabled: 'Khuyết tật',
+  };
+
+  return (
+    <article className="overflow-hidden rounded-2xl border border-emerald-800/60 bg-gradient-to-br from-emerald-950/80 to-emerald-950/40">
+      <div className="flex items-center gap-2 border-b border-emerald-800/40 bg-emerald-900/30 px-4 py-3">
+        <Bus className="h-5 w-5 text-emerald-400" />
+        <span className="text-sm font-bold tracking-wide text-emerald-300">
+          Vé xe buýt VinWonders
+        </span>
+      </div>
+      <div className="space-y-3 p-4">
+        <div className="flex items-center justify-between">
+          <p className="text-xs uppercase tracking-wider text-zinc-500">Mã vé</p>
+          <p className="font-mono text-xl font-bold tracking-wider text-emerald-200">
+            {result.ticketId}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/50 px-3 py-2.5 space-y-2 text-sm">
+          <div className="flex items-start gap-2 text-zinc-300">
+            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+            <div>
+              <span className="text-zinc-500">Từ</span>{' '}
+              <span className="font-medium">{result.from}</span>
+              {' → '}
+              <span className="font-medium text-emerald-200">{result.to}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-zinc-300">
+            <Bus className="h-4 w-4 shrink-0 text-emerald-400" />
+            <span>{result.route}</span>
+          </div>
+          <div className="flex items-center gap-2 text-zinc-300">
+            <Clock className="h-4 w-4 shrink-0 text-emerald-400" />
+            <span>{result.departureTime}</span>
+          </div>
+          <div className="flex items-center gap-2 text-zinc-300">
+            <Ticket className="h-4 w-4 shrink-0 text-emerald-400" />
+            <span>
+              {result.quantity} vé ({passengerLabels[result.passengerType] ?? result.passengerType})
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between rounded-xl bg-emerald-900/30 px-3 py-2">
+          <span className="text-xs text-zinc-400">Bến lên xe</span>
+          <span className="text-sm font-medium text-zinc-200">{result.boardingPoint}</span>
+        </div>
+        <div className="flex items-center justify-between rounded-xl bg-emerald-900/30 px-3 py-2">
+          <span className="text-xs text-zinc-400">Tổng thanh toán</span>
+          <span className="text-base font-bold text-emerald-300">{priceText}</span>
+        </div>
+      </div>
+    </article>
   );
 }
 
