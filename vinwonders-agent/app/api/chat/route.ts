@@ -6,7 +6,9 @@ import {
   runBuyTransportTicket,
   runSearchDestination,
   runHandleEmergency,
+  runSearchTicket,
   runServerTool,
+  runWeather,
 } from '@/lib/agent-tools';
 import {
   CAPABILITIES_REPLY,
@@ -102,6 +104,14 @@ function buildAgentTools(messages: UIMessage[], lastUserText: string) {
       execute: async (input) =>
         runBookRestaurant(input, messages, lastUserText),
     }),
+    searchTicket: tool({
+      description:
+        'Tra cứu giá vé vào cổng, vé tham quan tại các khu trong VinWonders và các địa điểm du lịch.',
+      inputSchema: z.object({
+        destination: z.string().describe('Tên địa điểm cần tra cứu giá vé'),
+      }),
+      execute: async ({ destination }) => runSearchTicket(destination),
+    }),
     handleEmergency: tool({
       description: 'Xử lý mất đồ, lạc trẻ em, sự cố y tế khẩn cấp.',
       inputSchema: z.object({
@@ -134,6 +144,14 @@ function buildAgentTools(messages: UIMessage[], lastUserText: string) {
           passengerType,
           departureTime,
         ),
+    }),
+    weather: tool({
+      description: 'Lấy thời tiết và nhiệt độ hiện tại',
+      inputSchema: z.object({
+        location: z.string().describe('Tên địa điểm'),
+      }),
+      execute: async ({ location }) =>
+        runWeather(location),
     }),
   };
 }
@@ -340,7 +358,7 @@ export async function POST(req: Request) {
               writer.write({
                 type: 'tool-output-available',
                 toolCallId,
-                output,
+                output: typeof output === 'string' ? output : JSON.stringify(output),
               });
 
               const summary = streamText({
@@ -383,7 +401,11 @@ export async function POST(req: Request) {
       messages: modelMessages,
       system: `${system}
 
-Công cụ: searchDestination, bookRestaurant, handleEmergency, buyTransportTicket — chỉ khi in-scope VinWonders.
+Hôm nay là ${new Date().toLocaleDateString('vi-VN')}.
+
+Công cụ: searchDestination, bookRestaurant, handleEmergency, buyTransportTicket, weather, searchTicket.
+Khi khách hỏi giá vé, vé vào cổng, vé tham quan — luôn gọi tool searchTicket để tra cứu.
+Khi khách hỏi thời tiết, nhiệt độ, trời nắng/mưa, hoặc hỏi có nên đi vào ngày nào đó — luôn gọi tool weather với location="Phú Quốc" để lấy thời tiết hiện tại, sau đó tư vấn dựa trên đó. Không từ chối vì "không biết tương lai".
 Không gọi lại công cụ đã có kết quả; không lộ email/SĐT/CCCD trong câu trả lời trừ khi khách vừa cung cấp để đặt phòng.`,
       tools: buildAgentTools(messages, lastUserText),
       stopWhen: stepCountIs(AGENT_LIMITS.maxAgentToolSteps),

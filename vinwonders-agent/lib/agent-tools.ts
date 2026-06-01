@@ -15,6 +15,22 @@ export async function runSearchDestination(
   const results = searchDestinations({ keyword, category, limit: 5 });
   return { results };
 }
+export async function runWeather(location: string) {
+  const response = await fetch(
+    `https://wttr.in/${encodeURIComponent(location)}?format=3`
+  );
+
+  if (!response.ok) {
+    throw new Error('Weather service unavailable');
+  }
+
+  const weather = await response.text();
+
+  return {
+    location,
+    weather,
+  };
+}
 
 export async function runHandleEmergency(
   type: 'lost_item' | 'medical' | 'other',
@@ -36,10 +52,10 @@ export async function runHandleEmergency(
     message: `Đã kích hoạt quy trình ứng phó. Mã ticket: ${ticketId}. Đội ngũ mặt đất đang rà soát.${contactHint} (${description})`,
     contact: contact
       ? {
-          name: contact.name,
-          location: contact.location,
-          contact_number: contact.contact_number,
-        }
+        name: contact.name,
+        location: contact.location,
+        contact_number: contact.contact_number,
+      }
       : undefined,
   };
 }
@@ -60,17 +76,17 @@ export function getLastUserText(messages: UIMessage[]): string {
 }
 
 const TRANSPORT_ROUTES: Record<string, { route: string; boardingPoint: string; durationMin: number }> = {
-  'grand_world':     { route: 'Tuyến B1', boardingPoint: 'Bến xe buýt Cổng chính',      durationMin: 8  },
-  'safari':          { route: 'Tuyến B2', boardingPoint: 'Bến xe buýt Khu Safari',       durationMin: 12 },
-  'ocean_park':      { route: 'Tuyến B3', boardingPoint: 'Bến xe buýt Khu Đại dương',    durationMin: 10 },
-  'adventure_world': { route: 'Tuyến B1', boardingPoint: 'Bến xe buýt Khu Phiêu lưu',   durationMin: 6  },
-  'central':         { route: 'Tuyến B4', boardingPoint: 'Bến xe buýt Trung tâm',        durationMin: 5  },
+  'grand_world': { route: 'Tuyến B1', boardingPoint: 'Bến xe buýt Cổng chính', durationMin: 8 },
+  'safari': { route: 'Tuyến B2', boardingPoint: 'Bến xe buýt Khu Safari', durationMin: 12 },
+  'ocean_park': { route: 'Tuyến B3', boardingPoint: 'Bến xe buýt Khu Đại dương', durationMin: 10 },
+  'adventure_world': { route: 'Tuyến B1', boardingPoint: 'Bến xe buýt Khu Phiêu lưu', durationMin: 6 },
+  'central': { route: 'Tuyến B4', boardingPoint: 'Bến xe buýt Trung tâm', durationMin: 5 },
 };
 
 const PASSENGER_PRICES: Record<string, number> = {
-  adult:    50000,
-  child:    25000,
-  senior:   25000,
+  adult: 50000,
+  child: 25000,
+  senior: 25000,
   disabled: 0,
 };
 
@@ -112,33 +128,39 @@ export async function runBuyTransportTicket(
 
 export type ServerTool =
   | {
-      name: 'searchDestination';
-      input: { keyword: string; category?: Destination['type'] };
-    }
+    name: 'searchDestination';
+    input: { keyword: string; category?: Destination['type'] };
+  }
   | {
-      name: 'handleEmergency';
-      input: { type: 'lost_item' | 'medical' | 'other'; description: string };
-    }
+    name: 'handleEmergency';
+    input: { type: 'lost_item' | 'medical' | 'other'; description: string };
+  }
   | {
-      name: 'buyTransportTicket';
-      input: {
-        destination: string;
-        quantity: number;
-        passengerType: 'adult' | 'child' | 'senior' | 'disabled';
-        departureTime?: string;
-      };
-    }
-  | {
-      name: 'bookRestaurant';
-      input: {
-        restaurantId?: string;
-        restaurantName?: string;
-        guestName?: string;
-        partySize?: number;
-        dateTime?: string;
-        notes?: string;
-      };
+    name: 'buyTransportTicket';
+    input: {
+      destination: string;
+      quantity: number;
+      passengerType: 'adult' | 'child' | 'senior' | 'disabled';
+      departureTime?: string;
     };
+  }
+  | {
+    name: 'bookRestaurant';
+    input: {
+      restaurantId?: string;
+      restaurantName?: string;
+      guestName?: string;
+      partySize?: number;
+      dateTime?: string;
+      notes?: string;
+    };
+  }
+  | {
+    name: 'weather';
+    input: {
+      location: string;
+    };
+  };
 
 const BOOKING_INTENT =
   /(đặt bàn|dat ban|đặt chỗ|dat cho|giữ bàn|giu ban|giữ chỗ|giu cho|đặt hộ|dat ho|book\s*table|reserve|reservation|booking)/i;
@@ -160,7 +182,9 @@ const TRANSPORT_INTENT =
   /(xe buýt|xe buyt|bus|mua vé|mua ve|đặt vé|dat ve|vé xe|ve xe|đi xe|di xe|phương tiện|phuong tien|transport|ticket|di chuyển đến|di chuyen den|đến khu|den khu)/i;
 
 const SORRY_FALLBACK =
-/(xin lỗi|sorry|bị lỗi|bi loi|không biết| không thể|khong biet|chưa rõ|chua ro|không chắc|khong chac)/i;
+  /(xin lỗi|sorry|bị lỗi|bi loi|không biết| không thể|khong biet|chưa rõ|chua ro|không chắc|khong chac)/i;
+const WEATHER_INTENT =
+  /(thời tiết|thoi tiet|nhiệt độ|nhiet do|mưa không|mua khong|nắng không|nang khong|weather|temperature)/i;
 
 const DESTINATION_NAMES: Record<string, string> = {
   'grand world': 'grand_world',
@@ -271,7 +295,18 @@ export function detectServerTool(
       },
     };
   }
+  // 4.5) Thời tiết
+  if (WEATHER_INTENT.test(lower)) {
+    const cityMatch =
+      trimmed.match(/(?:ở|tai|tại)\s+(.+)$/i);
 
+    return {
+      name: 'weather',
+      input: {
+        location: cityMatch?.[1]?.trim() || 'Phu Quoc',
+      },
+    };
+  }
   // 5) Gợi ý / khám phá
   if (EXPLORATION_INTENT.test(lower) && !SORRY_FALLBACK.test(lower)) {
     const { keyword, category } = extractSearchKeyword(trimmed);
@@ -320,6 +355,15 @@ export async function runServerTool(
       ),
     };
   }
+  if (serverTool.name === 'weather') {
+    return {
+      name: serverTool.name,
+      input: serverTool.input,
+      output: await runWeather(
+        serverTool.input.location,
+      ),
+    };
+  }
 
   if (serverTool.name === 'bookRestaurant') {
     return {
@@ -349,6 +393,8 @@ function getToolHint(toolName: string): string {
       return 'Chỉ ticket, liên hệ, bước tiếp theo — không giải thích dài ngoài sự cố.';
     case 'buyTransportTicket':
       return 'Chỉ xác nhận mã vé, tuyến, giờ, bến lên xe — không thêm chủ đề khác.';
+    case 'weather':
+      return 'Chỉ trả lời thời tiết hiện tại và nhiệt độ từ dữ liệu công cụ.';
     default:
       return 'Tóm tắt surgical từ dữ liệu công cụ.';
   }
