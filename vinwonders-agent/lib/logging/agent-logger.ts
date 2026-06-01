@@ -1,5 +1,6 @@
 import { appendFile, mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
+import { sanitizeForLogging } from '@/lib/security/sanitization';
 import { calculateTokenCost } from './cost';
 import type {
   AgentErrorLog,
@@ -94,13 +95,19 @@ function logToConsole(label: string, payload: object): void {
 
 export function previewUserMessage(text: string, maxLen = 80): string {
   const oneLine = text.replace(/\s+/g, ' ').trim();
-  return oneLine.length <= maxLen ? oneLine : `${oneLine.slice(0, maxLen)}…`;
+  const truncated =
+    oneLine.length <= maxLen ? oneLine : `${oneLine.slice(0, maxLen)}…`;
+  const redacted = sanitizeForLogging(truncated);
+  return typeof redacted === 'string' ? redacted : truncated;
 }
 
 export async function logAgentMetrics(
   entry: Omit<AgentMetricsLog, 'type'>,
 ): Promise<void> {
-  const record: AgentMetricsLog = { type: 'metrics', ...entry };
+  const record: AgentMetricsLog = {
+    type: 'metrics',
+    ...(sanitizeForLogging(entry) as Omit<AgentMetricsLog, 'type'>),
+  };
   await appendJsonl(METRICS_FILE, record);
   await updateRollupFromMetrics(record);
   logToConsole('METRICS', record);
@@ -109,7 +116,10 @@ export async function logAgentMetrics(
 export async function logAgentError(
   entry: Omit<AgentErrorLog, 'type'>,
 ): Promise<void> {
-  const record: AgentErrorLog = { type: 'error', ...entry };
+  const record: AgentErrorLog = {
+    type: 'error',
+    ...(sanitizeForLogging(entry) as Omit<AgentErrorLog, 'type'>),
+  };
   await appendJsonl(ERRORS_FILE, record);
   await updateRollupFromError();
   console.error('[VinWonders Agent] ERROR', JSON.stringify(record));

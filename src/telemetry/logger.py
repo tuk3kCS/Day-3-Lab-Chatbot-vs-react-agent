@@ -4,6 +4,9 @@ import os
 from datetime import datetime
 from typing import Any, Dict
 
+from src.security.sanitization import sanitize_for_logging
+
+
 class IndustryLogger:
     """
     Structured logger that simulates industry practices.
@@ -27,13 +30,14 @@ class IndustryLogger:
         self.logger.addHandler(console_handler)
 
     def log_event(self, event_type: str, data: Dict[str, Any]):
-        """Logs an event with a timestamp and type."""
+        """Logs an event with a timestamp and type (PII redacted)."""
+        safe_data = sanitize_for_logging(data)
         payload = {
             "timestamp": datetime.utcnow().isoformat(),
             "event": event_type,
-            "data": data
+            "data": safe_data,
         }
-        self.logger.info(json.dumps(payload))
+        self.logger.info(json.dumps(payload, default=str))
 
     def info(self, msg: str):
         self.logger.info(msg)

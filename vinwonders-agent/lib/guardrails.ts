@@ -11,6 +11,12 @@
  */
 
 import { z } from 'zod';
+import {
+  containsDangerousFragments,
+  removeActiveContent,
+  sanitizeUserInput,
+} from '@/lib/security/sanitization';
+import { redactPii } from '@/lib/security/redaction';
 
 interface SecurityEvent {
   level: 'info' | 'warning' | 'critical';
@@ -71,14 +77,8 @@ export class GuardrailsValidator {
     /javascript:/i,
   ];
 
-  private sensitivePatterns = {
-    apiKey: /(?:api[_-]?key|apikey|secret)['":\s=]+[a-zA-Z0-9_\-]{20,}/i,
-    password: /(?:password|passwd|pwd)['":\s=]+[^\s]{6,}/i,
-    token: /(?:token|bearer|auth)['":\s=]+[a-zA-Z0-9_\-]{20,}/i,
-    email: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/i,
-    phone: /\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/,
-    ssn: /\b\d{3}-\d{2}-\d{4}\b/,
-    creditCard: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/,
+  private credentialPatterns = {
+    password: /(?:password|passwd|pwd|mat\s*khau)['":\s=]+[^\s]{6,}/i,
   };
 
   logEvent(event: Omit<SecurityEvent, 'timestamp'>): void {
@@ -154,7 +154,12 @@ export class GuardrailsValidator {
   // ==================== INPUT VALIDATION ====================
 
   validateInput(userInput: string, userId: string = 'unknown'): boolean {
-    if (!userInput || typeof userInput !== 'string') {
+    const sanitized = sanitizeUserInput(
+      typeof userInput === 'string' ? userInput : '',
+      this.maxInputLength,
+    );
+
+    if (!sanitized) {
       this.logEvent({
         level: 'warning',
         category: 'validation',
@@ -163,6 +168,8 @@ export class GuardrailsValidator {
       });
       return false;
     }
+
+    userInput = sanitized;
 
     // Check length
     if (userInput.length > this.maxInputLength) {
@@ -181,6 +188,16 @@ export class GuardrailsValidator {
         level: 'warning',
         category: 'validation',
         message: 'Null bytes detected in input',
+        details: { userId },
+      });
+      return false;
+    }
+
+    if (containsDangerousFragments(userInput)) {
+      this.logEvent({
+        level: 'critical',
+        category: 'validation',
+        message: 'Dangerous fragments detected in input',
         details: { userId },
       });
       return false;
@@ -265,41 +282,12 @@ export class GuardrailsValidator {
   // ==================== OUTPUT SAFETY ====================
 
   sanitizeOutput(text: string): string {
-    let sanitized = text;
-
-    // Mask email addresses
-    sanitized = sanitized.replace(
-      /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
-      '[email_masked]',
-    );
-
-    // Mask phone numbers
-    sanitized = sanitized.replace(
-      /\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/g,
-      '[phone_masked]',
-    );
-
-    // Mask API keys
-    sanitized = sanitized.replace(
-      /(?:api[_-]?key|apikey|secret)['":\s=]+[a-zA-Z0-9_\-]{20,}/gi,
-      '[secret_masked]',
-    );
-
-    // Mask tokens
-    sanitized = sanitized.replace(
-      /(?:token|bearer|auth)['":\s=]+[a-zA-Z0-9_\-]{20,}/gi,
-      '[token_masked]',
-    );
-
-    // Remove script tags
-    sanitized = sanitized.replace(/<script[^>]*>.*?<\/script>/gi, '');
-    sanitized = sanitized.replace(/<iframe[^>]*>.*?<\/iframe>/gi, '');
-
-    return sanitized;
+    if (!text) return text;
+    return redactPii(removeActiveContent(text));
   }
 
   validateOutput(text: string): boolean {
-    for (const [patternName, pattern] of Object.entries(this.sensitivePatterns)) {
+    for (const [patternName, pattern] of Object.entries(this.credentialPatterns)) {
       if (pattern.test(text)) {
         this.logEvent({
           level: 'critical',
@@ -310,6 +298,7 @@ export class GuardrailsValidator {
         return false;
       }
     }
+
     return true;
   }
 

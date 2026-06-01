@@ -45,6 +45,12 @@ export const OFF_TOPIC_REPLY =
 
 export const MESSAGE_TOO_LONG_REPLY = `Tin nhắn hơi dài (giới hạn ${AGENT_LIMITS.maxUserMessageChars} ký tự). Bạn gửi ngắn lại hoặc tách thành vài câu hỏi nhé.`;
 
+export const SECURITY_INPUT_REJECTED_REPLY =
+  'Nội dung không hợp lệ hoặc vượt giới hạn bảo mật. Bạn có thể hỏi về lịch trình tham quan, gợi ý phòng, đặt phòng hoặc dịch vụ tại VinWonders.';
+
+export const SECURITY_RATE_LIMIT_REPLY =
+  'Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau ít phút.';
+
 const OFF_TOPIC_PATTERNS: RegExp[] = [
   /viết\s+(code|chương trình)|lập trình|python|javascript|typescript|react\s+js/i,
   /bài tập|homework|giải hộ|làm hộ/i,

@@ -11,13 +11,18 @@ Provides:
 """
 
 import re
-import json
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import hashlib
 import time
 
+from src.security.redaction import redact_pii
+from src.security.sanitization import (
+    contains_dangerous_fragments,
+    remove_active_content,
+    sanitize_user_input,
+)
 from src.telemetry.logger import logger
 
 
@@ -71,15 +76,9 @@ class GuardrailsValidator:
             r"<!--.*?-->",  # HTML comments
         ]
 
-        # Patterns for sensitive data
-        self.sensitive_patterns = {
-            "api_key": r"(?:api[_-]?key|apikey|secret)['\"]?\s*[:=]\s*['\"]?[a-zA-Z0-9_\-]{20,}",
-            "password": r"(?:password|passwd|pwd)['\"]?\s*[:=]\s*['\"]?[^\s]{6,}",
-            "token": r"(?:token|bearer|auth)['\"]?\s*[:=]\s*['\"]?[a-zA-Z0-9_\-]{20,}",
-            "email": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
-            "phone": r"\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b",
-            "ssn": r"\b\d{3}-\d{2}-\d{4}\b",  # US SSN
-            "credit_card": r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
+        # Credential / password patterns (not covered by generic PII redaction)
+        self.credential_patterns = {
+            "password": r"(?:password|passwd|pwd|mat\s*khau)['\"]?\s*[:=]\s*['\"]?[^\s]{6,}",
         }
 
         # Dangerous code patterns
@@ -122,7 +121,12 @@ class GuardrailsValidator:
         Returns:
             bool: True if input is safe, False otherwise
         """
-        if not user_input or not isinstance(user_input, str):
+        user_input = sanitize_user_input(
+            user_input if isinstance(user_input, str) else "",
+            max_length=self.max_input_length,
+        )
+
+        if not user_input:
             self.log_event(
                 SecurityEvent(
                     level=SecurityLevel.WARNING,
@@ -164,6 +168,17 @@ class GuardrailsValidator:
                     level=SecurityLevel.WARNING,
                     category="validation",
                     message="Null bytes detected in input",
+                    details={"user_id": user_id},
+                )
+            )
+            return False
+
+        if contains_dangerous_fragments(user_input):
+            self.log_event(
+                SecurityEvent(
+                    level=SecurityLevel.CRITICAL,
+                    category="validation",
+                    message="Dangerous fragments detected in input",
                     details={"user_id": user_id},
                 )
             )
@@ -273,52 +288,10 @@ class GuardrailsValidator:
     # ==================== OUTPUT SAFETY ====================
 
     def sanitize_output(self, text: str) -> str:
-        """
-        Remove or mask sensitive information from output.
-        
-        Args:
-            text: Output text to sanitize
-            
-        Returns:
-            str: Sanitized text
-        """
-        sanitized = text
-        
-        # Mask email addresses
-        sanitized = re.sub(
-            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
-            "[email_masked]",
-            sanitized
-        )
-
-        # Mask phone numbers
-        sanitized = re.sub(
-            r"\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b",
-            "[phone_masked]",
-            sanitized
-        )
-
-        # Mask API keys
-        sanitized = re.sub(
-            r"(?:api[_-]?key|apikey|secret)['\"]?\s*[:=]\s*['\"]?[a-zA-Z0-9_\-]{20,}",
-            "[secret_masked]",
-            sanitized,
-            flags=re.IGNORECASE
-        )
-
-        # Mask tokens
-        sanitized = re.sub(
-            r"(?:token|bearer|auth)['\"]?\s*[:=]\s*['\"]?[a-zA-Z0-9_\-]{20,}",
-            "[token_masked]",
-            sanitized,
-            flags=re.IGNORECASE
-        )
-
-        # Remove HTML/script tags
-        sanitized = re.sub(r"<script[^>]*>.*?</script>", "", sanitized, flags=re.IGNORECASE | re.DOTALL)
-        sanitized = re.sub(r"<iframe[^>]*>.*?</iframe>", "", sanitized, flags=re.IGNORECASE | re.DOTALL)
-
-        return sanitized
+        """Redact PII and strip active content from agent responses."""
+        if not text:
+            return text
+        return redact_pii(remove_active_content(text))
 
     def validate_output(self, text: str) -> bool:
         """
@@ -327,7 +300,7 @@ class GuardrailsValidator:
         Returns:
             bool: True if output is safe, False otherwise
         """
-        for pattern_name, pattern in self.sensitive_patterns.items():
+        for pattern_name, pattern in self.credential_patterns.items():
             if re.search(pattern, text, re.IGNORECASE):
                 self.log_event(
                     SecurityEvent(
@@ -338,6 +311,7 @@ class GuardrailsValidator:
                     )
                 )
                 return False
+
         return True
 
     # ==================== RESOURCE LIMITS ====================
@@ -348,7 +322,7 @@ class GuardrailsValidator:
         input_tokens: int,
         output_tokens: int,
         steps: int,
-        latency_ms: float,
+        latency_ms: float = 0,
     ) -> bool:
         """
         Track resource usage for a request.
