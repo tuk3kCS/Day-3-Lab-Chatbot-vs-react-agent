@@ -16,6 +16,19 @@ export type EmergencyResult = {
   };
 };
 
+export type TransportTicketResult = {
+  status: 'success' | 'error';
+  ticketId: string;
+  from: string;
+  to: string;
+  route: string;
+  departureTime: string;
+  quantity: number;
+  passengerType: string;
+  pricePerTicket: number;
+  totalPrice: number;
+  boardingPoint: string;
+  message: string;
 export type ReservationResult = {
   status: 'confirmed' | 'waitlist';
   bookingCode: string;

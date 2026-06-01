@@ -5,6 +5,7 @@ import {
   runBookRestaurant,
   runSearchDestination,
   runHandleEmergency,
+  runBuyTransportTicket,
   runServerTool,
 } from '@/lib/agent-tools';
 import {
@@ -93,6 +94,22 @@ function buildAgentTools() {
       execute: async ({ type, description }) =>
         runHandleEmergency(type, description),
     }),
+    execute: async ({ type, description }) =>
+      runHandleEmergency(type, description),
+  }),
+  buyTransportTicket: tool({
+    description: 'Mua vé xe buýt công cộng để di chuyển đến các khu trong VinWonders.',
+    inputSchema: z.object({
+      destination: z.string().describe('Tên khu/điểm đến (ví dụ: safari, grand_world, ocean_park)'),
+      quantity: z.number().int().min(1).max(20).describe('Số lượng vé'),
+      passengerType: z
+        .enum(['adult', 'child', 'senior', 'disabled'])
+        .describe('Loại hành khách'),
+      departureTime: z.string().optional().describe('Giờ khởi hành mong muốn (tùy chọn)'),
+    }),
+    execute: async ({ destination, quantity, passengerType, departureTime }) =>
+      runBuyTransportTicket(destination, quantity, passengerType, departureTime),
+  }),
   };
 }
 
@@ -233,6 +250,42 @@ export async function POST(req: Request) {
     const serverTool = detectServerTool(lastUserText, messages);
 
     if (serverTool) {
+      const { name, input, output } = await runServerTool(serverTool);
+      const toolCallId = generateId();
+
+      const streamResponse = createUIMessageStreamResponse({
+        stream: createUIMessageStream({
+          originalMessages: messages,
+          execute: async ({ writer }) => {
+            writer.write({
+              type: 'tool-input-available',
+              toolCallId,
+              toolName: name,
+              input,
+            });
+            writer.write({
+              type: 'tool-output-available',
+              toolCallId,
+              output,
+            });
+
+            const toolHint =
+              name === 'searchDestination'
+                ? 'Khách đang hỏi gợi ý địa điểm — KHÔNG tạo ticket khẩn cấp mới; chỉ gợi ý chỗ chơi/ăn phù hợp.'
+                : name === 'buyTransportTicket'
+                ? 'Tóm tắt thông tin vé xe buýt cho khách: mã vé, tuyến xe, bến lên xe, giờ khởi hành, tổng tiền.'
+                : 'Tóm tắt kết quả khẩn cấp cho khách.';
+
+            const summary = streamText({
+              model: ollamaModel,
+              messages: modelMessages,
+              system: `${system}\n\n${toolHint}\n\nKết quả công cụ "${name}": ${JSON.stringify(output)}.`,
+              onFinish,
+            });
+            writer.merge(summary.toUIMessageStream());
+          },
+        }),
+        headers: responseHeaders,
       const guard = evaluateToolGuard(messages, serverTool, lastUserText);
       if (!guard.allow) {
         const meta = {
@@ -322,6 +375,16 @@ Không gọi lại công cụ đã có kết quả; trả lời surgical từ ng
       onFinish: createOnFinish(baseMeta),
     });
 
+  const result = streamText({
+    model: ollamaModel,
+    messages: modelMessages,
+    system: `${system}
+Nếu khách hỏi địa điểm → gọi searchDestination.
+Nếu khách báo mất đồ / y tế khẩn cấp → gọi handleEmergency.
+Nếu khách muốn mua vé xe buýt / hỏi phương tiện di chuyển → gọi buyTransportTicket.`,
+    tools: agentTools,
+    onFinish,
+  });
     return result.toUIMessageStreamResponse();
   } catch (error) {
     await logAgentError({
