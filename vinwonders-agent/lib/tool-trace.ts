@@ -87,6 +87,12 @@ function inferPolicyLabel(text: string): string | null {
   if (text.startsWith('Mình chỉ hỗ trợ thông tin')) return 'Ngoài phạm vi (policy)';
   if (text.includes('giới hạn') && text.includes('ký tự')) return 'Kiểm tra độ dài tin';
   if (text.startsWith('Vui lòng nhập')) return 'Tin nhắn trống';
+  if (text.startsWith('Mình đã xử lý yêu cầu tương tự')) {
+    return 'Chặn tool trùng (policy)';
+  }
+  if (text.startsWith('Bạn gửi quá nhiều lệnh giống nhau')) {
+    return 'Giới hạn spam tool (policy)';
+  }
   return null;
 }
 

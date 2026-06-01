@@ -11,31 +11,37 @@ export const AGENT_LIMITS = {
   maxOutputTokensAfterTool: Number(process.env.MAX_OUTPUT_TOKENS_TOOL) || 180,
   /** Nhiệt độ thấp → ít lan man */
   temperature: Number(process.env.AGENT_TEMPERATURE) || 0.35,
-  /** Số câu gợi ý tối đa trong lời thoại */
-  maxSentencesHint: 4,
+  /** Số câu gợi ý tối đa trong lời thoại (Karpathy: đơn giản trước tiên) */
+  maxSentencesHint: Number(process.env.MAX_RESPONSE_SENTENCES) || 3,
+  /** Vòng gọi tool tối đa mỗi lượt (native tools / AI SDK) */
+  maxAgentToolSteps: Number(process.env.MAX_AGENT_TOOL_STEPS) || 3,
+  /** Tối đa lần gọi cùng một tool trong phiên */
+  maxSameToolPerSession: Number(process.env.MAX_SAME_TOOL_PER_SESSION) || 6,
+  /** Chặn (không trả lời) khi cùng câu user lặp N lần liên tiếp */
+  maxConsecutiveDuplicateUserMessages:
+    Number(process.env.MAX_CONSECUTIVE_DUPLICATE_USER) || 3,
+  /** Chặn khi N lần tool liên tiếp cùng tên */
+  maxConsecutiveSameTool: 2,
 } as const;
 
-const SCOPE_RULES = `## Phạm vi & giới hạn phản hồi
+const SCOPE_RULES = `## Phạm vi (in-scope only)
 
 Bạn CHỈ hỗ trợ khách tại **VinWonders** (công viên, nhà hàng, show, khách sạn, an ninh, đặt bàn).
 
-**Được phép:** gợi ý địa điểm trong hệ thống, lịch trình tham quan, đặt bàn, sự cố mất đồ/y tế, giờ mở cửa, mẹo tham quan.
+**Được phép:** gợi ý địa điểm trong hệ thống, lịch trình tham quan, đặt bàn, sự cố mất đồ/y tế, giờ mở cửa, mẹo tham quan **khi khách hỏi**.
 
-**KHÔNG được:**
-- Trả lời câu hỏi ngoài VinWonders (bài tập, lập trình, tin tức, chiến sự, chính trị quốc tế, y khoa chuyên sâu, tư vấn pháp lý…)
-- Gọi công cụ tìm địa điểm/y tế khi khách hỏi việc không liên quan công viên
-- Bịa thông tin không có trong dữ liệu công cụ — nếu không chắc, nói rõ và gợi ý hỏi quầy thông tin
-- Viết quá dài: tối đa ~${AGENT_LIMITS.maxSentencesHint} câu ngắn (trừ khi liệt kê địa điểm từ công cụ)
-- Hứa điều không thực hiện được (hoàn tiền, đổi chính sách toàn công ty…) — chỉ mô tả quy trình demo
+**KHÔNG được (out of scope — từ chối, không triển khai):**
+- Bài tập, lập trình, tin tức, chính trị, tài chính, y khoa chuyên sâu, pháp lý, nấu ăn chung…
+- Gọi công cụ khi câu hỏi không liên quan công viên
+- Bịa dữ liệu; hứa hoàn tiền / đổi chính sách công ty (chỉ mô tả demo)
+- Trả lời dài hoặc “dạy” thêm kiến thức ngoài câu hỏi
 
-**Giọng điệu:** thân thiện, chuyên nghiệp, tiếng Việt. Ưu tiên gạch đầu dòng khi liệt kê.
+**Giọng điệu:** thân thiện, tiếng Việt, gạch đầu dòng khi liệt kê địa điểm.
 
-**Khi khách hỏi "bạn giúp được gì" / chức năng:** liệt kê ngắn 4 nhóm — tìm địa điểm, đặt bàn, khẩn cấp, liên hệ — kèm 1–2 câu ví dụ họ có thể hỏi.
-
-**Ngoài phạm vi:** từ chối nhẹ nhàng 1–2 câu và gợi ý 1 việc có thể giúp tại VinWonders.`;
+**Hỏi chức năng:** 4 nhóm ngắn (tìm địa điểm, đặt bàn, khẩn cấp, liên hệ) + tối đa 2 ví dụ câu hỏi.`;
 
 export const OFF_TOPIC_REPLY =
-  'Mình không cung cấp tin tức hay tư vấn về sự kiện bên ngoài công viên — chỉ hỗ trợ dịch vụ tại VinWonders (địa điểm, ăn uống, show, đặt bàn, sự cố khẩn cấp tại khu vui chơi). Bạn cần gợi ý gì khi tham quan VinWonders ạ?';
+  'Mình chỉ hỗ trợ thông tin và dịch vụ tại VinWonders (địa điểm, ăn uống, show, đặt bàn, sự cố trong công viên). Bạn cần gợi ý gì khi tham quan ạ?';
 
 export const MESSAGE_TOO_LONG_REPLY = `Tin nhắn hơi dài (giới hạn ${AGENT_LIMITS.maxUserMessageChars} ký tự). Bạn gửi ngắn lại hoặc tách thành vài câu hỏi nhé.`;
 
@@ -50,6 +56,8 @@ const OFF_TOPIC_PATTERNS: RegExp[] = [
   /quân sự|quan su|xung đột|xung dot|biến động thế giới|trung đông|trung dong/i,
   /\b(iran|israel|ukraine|gaza|nato|hamas|lebanon|syria)\b/i,
   /giá vàng|gia vang|chứng khoán|lãi suất|tỷ giá|ty gia/i,
+  /(?:giải thích|giai thich|phân tích|phan tich|so sánh|so sanh)\s+(?:lịch sử|lich su|thế giới|the gioi|kinh tế|kinh te)/i,
+  /(?:viết|viet)\s+(?:bài|bai|essay|luận|luan)/i,
 ];
 
 const IN_SCOPE_PATTERNS: RegExp[] = [
@@ -81,10 +89,15 @@ export function isClearlyOffTopic(text: string): boolean {
   return OFF_TOPIC_PATTERNS.some((p) => p.test(lower));
 }
 
-export function buildAgentSystemPrompt(memorySummary: string): string {
+export function buildAgentSystemPrompt(
+  memorySummary: string,
+  karpathyRules: string,
+): string {
   const base = `Bạn là trợ lý ảo AI túc trực tại VinWonders.
 
-${SCOPE_RULES}`;
+${SCOPE_RULES}
+
+${karpathyRules}`;
 
   if (!memorySummary) return base;
   return `${base}\n\n${memorySummary}`;

@@ -99,7 +99,6 @@ const SEARCH_FALLBACK =
 const SORRY_FALLBACK =
 /(xin lỗi|sorry|bị lỗi|bi loi|không biết| không thể|khong biet|chưa rõ|chua ro|không chắc|khong chac)/i;
 
-export function detectServerTool(text: string): ServerTool | null {
 function parseBookInput(
   text: string,
 ): Extract<ServerTool, { name: 'bookRestaurant' }>['input'] | null {
@@ -122,7 +121,7 @@ function parseBookInput(
 
 export function detectServerTool(
   text: string,
-  messages: UIMessage[] = [],
+  _messages: UIMessage[] = [],
 ): ServerTool | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -213,13 +212,13 @@ export async function runServerTool(
 function getToolHint(toolName: string): string {
   switch (toolName) {
     case 'searchDestination':
-      return 'Khách đang hỏi gợi ý địa điểm. Gợi ý ngắn; nếu là nhà hàng, nhắc có thể đặt bàn qua agent.';
+      return 'Chỉ gợi ý từ kết quả tìm kiếm; tối đa 5 mục. Nhà hàng: một câu nhắc có thể đặt bàn — không thêm chủ đề khác.';
     case 'bookRestaurant':
-      return 'Đã đặt bàn xong. Xác nhận mã booking, giờ đến, số người; không tạo ticket khẩn cấp.';
+      return 'Chỉ xác nhận mã booking, giờ, số người — không ticket khẩn cấp, không quảng cáo thêm.';
     case 'handleEmergency':
-      return 'Tóm tắt kết quả khẩn cấp cho khách.';
+      return 'Chỉ ticket, liên hệ, bước tiếp theo — không giải thích dài ngoài sự cố.';
     default:
-      return 'Tóm tắt ngắn cho khách.';
+      return 'Tóm tắt surgical từ dữ liệu công cụ.';
   }
 }
 

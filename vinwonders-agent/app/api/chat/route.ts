@@ -19,7 +19,11 @@ import {
   OFF_TOPIC_REPLY,
   validateUserMessage,
 } from '@/lib/agent-policy';
-import { createPolicyStreamResponse } from '@/lib/fixed-reply';
+import {
+  createPolicyStreamResponse,
+  createSilentStreamResponse,
+} from '@/lib/fixed-reply';
+import { evaluateConsecutiveSpamGuard } from '@/lib/tool-guard';
 import {
   buildTokenCostFromUsage,
   logAgentError,
@@ -27,6 +31,10 @@ import {
   previewUserMessage,
   type ContextLogSnapshot,
 } from '@/lib/logging';
+import {
+  buildKarpathyResponseRules,
+  buildKarpathyToolSummaryHint,
+} from '@/lib/karpathy-response-rules';
 import { prepareConversationContext } from '@/lib/memory';
 import { createOllamaChatModel } from '@/lib/ollama-client';
 import {
@@ -35,10 +43,12 @@ import {
   resolveModelId,
 } from '@/lib/ollama-config';
 import { toOllamaMessages } from '@/lib/ollama-messages';
+import { evaluateToolGuard } from '@/lib/tool-guard';
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   generateId,
+  stepCountIs,
   streamText,
   tool,
   type LanguageModelUsage,
@@ -176,7 +186,10 @@ export async function POST(req: Request) {
 
   const ctx = prepareConversationContext(messages);
   const modelMessages = toOllamaMessages(ctx.windowMessages);
-  const system = buildAgentSystemPrompt(ctx.memorySummary);
+  const system = buildAgentSystemPrompt(
+    ctx.memorySummary,
+    buildKarpathyResponseRules(),
+  );
   const lastUserText = getLastUserText(messages);
   const userPreview = previewUserMessage(lastUserText);
   const contextSnapshot = toContextSnapshot(ctx);
@@ -197,6 +210,13 @@ export async function POST(req: Request) {
     return createPolicyStreamResponse(messages, inputCheck.message);
   }
 
+  const spamGuard = evaluateConsecutiveSpamGuard(messages);
+  if (!spamGuard.allow) {
+    const meta = { ...baseMeta, toolUsed: 'policy_spam_silent' };
+    await logPolicyReply(meta, 0);
+    return createSilentStreamResponse(messages);
+  }
+
   if (isCapabilitiesQuestion(lastUserText)) {
     const meta = { ...baseMeta, toolUsed: 'policy_capabilities' };
     await logPolicyReply(meta, CAPABILITIES_REPLY.length);
@@ -210,9 +230,21 @@ export async function POST(req: Request) {
   }
 
   try {
-    if (!useNativeTools) {
-      const serverTool = detectServerTool(lastUserText, messages);
+    const serverTool = detectServerTool(lastUserText, messages);
 
+    if (serverTool) {
+      const guard = evaluateToolGuard(messages, serverTool, lastUserText);
+      if (!guard.allow) {
+        const meta = {
+          ...baseMeta,
+          toolUsed: `policy_tool_${guard.reason}`,
+        };
+        await logPolicyReply(meta, guard.message.length);
+        return createPolicyStreamResponse(messages, guard.message);
+      }
+    }
+
+    if (!useNativeTools) {
       if (serverTool) {
         const meta: RequestMeta = {
           ...baseMeta,
@@ -245,7 +277,7 @@ export async function POST(req: Request) {
               const summary = streamText({
                 model: chatModel,
                 messages: modelMessages,
-                system: `${system}\n\n${toolHint}\n\nKết quả công cụ "${name}": ${JSON.stringify(output)}. Tóm tắt tối đa ${AGENT_LIMITS.maxSentencesHint} câu, không bịa thêm.`,
+                system: `${system}\n\n${toolHint}\n\n${buildKarpathyToolSummaryHint(name)}\n\nKết quả công cụ "${name}": ${JSON.stringify(output)}.`,
                 ...getStreamSettings({ afterTool: true }),
                 onFinish: createOnFinish(meta),
               });
@@ -281,8 +313,11 @@ export async function POST(req: Request) {
       model: chatModel,
       messages: modelMessages,
       system: `${system}
-Khi cần: searchDestination (địa điểm), bookRestaurant (đặt bàn), handleEmergency (khẩn cấp).`,
+
+Công cụ: searchDestination, bookRestaurant, handleEmergency — chỉ khi in-scope.
+Không gọi lại công cụ đã có kết quả; trả lời surgical từ ngữ cảnh, không mở chủ đề ngoài VinWonders.`,
       tools: buildAgentTools(),
+      stopWhen: stepCountIs(AGENT_LIMITS.maxAgentToolSteps),
       ...getStreamSettings(),
       onFinish: createOnFinish(baseMeta),
     });

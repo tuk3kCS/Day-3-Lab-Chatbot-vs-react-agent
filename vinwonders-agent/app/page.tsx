@@ -11,6 +11,7 @@ import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import type { BookingDetails } from '@/components/chat/booking-form';
 import { AGENT_LIMITS } from '@/lib/agent-policy';
+import { countConsecutiveIdenticalUserMessages } from '@/lib/tool-guard';
 import type { Destination } from '@/lib/mockData';
 import {
   CalendarCheck,
@@ -98,8 +99,10 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [selectedModel, setSelectedModel] = useState(DEFAULT_OLLAMA_MODEL);
   const [traceOpen, setTraceOpen] = useState(false);
+  const [spamHint, setSpamHint] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const sendLockRef = useRef(false);
 
   const chatTransport = useMemo(
     () =>
@@ -127,15 +130,39 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, status, scrollToBottom]);
 
+  useEffect(() => {
+    if (status === 'ready' || status === 'error') {
+      sendLockRef.current = false;
+    }
+  }, [status]);
+
   const sendText = useCallback(
     (text: string) => {
       const trimmed = text.trim().slice(0, MAX_INPUT_CHARS);
-      if (!trimmed || status !== 'ready') return;
+      if (!trimmed || status !== 'ready' || sendLockRef.current) return;
+
+      const pendingCount = countConsecutiveIdenticalUserMessages([
+        ...messages,
+        {
+          id: 'pending',
+          role: 'user',
+          parts: [{ type: 'text', text: trimmed }],
+        },
+      ]);
+      if (pendingCount >= AGENT_LIMITS.maxConsecutiveDuplicateUserMessages) {
+        setSpamHint(
+          'Bạn đã gửi cùng câu hỏi 3 lần liên tiếp. Vui lòng đợi hoặc đổi cách hỏi.',
+        );
+        return;
+      }
+
+      setSpamHint(null);
+      sendLockRef.current = true;
       sendMessage({ text: trimmed });
       setInput('');
       requestAnimationFrame(() => inputRef.current?.focus());
     },
-    [sendMessage, status],
+    [messages, sendMessage, status],
   );
 
   const handleConfirmBooking = useCallback(
@@ -153,6 +180,7 @@ export default function ChatPage() {
     if (isBusy) stop();
     setMessages([]);
     setInput('');
+    setSpamHint(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -227,6 +255,15 @@ export default function ChatPage() {
         className="vw-scrollbar flex-1 overflow-y-auto px-4 py-6 sm:px-6"
       >
         <div className="mx-auto flex max-w-3xl flex-col gap-6">
+          {spamHint && (
+            <div
+              role="status"
+              className="rounded-2xl border border-amber-800/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-200"
+            >
+              {spamHint}
+            </div>
+          )}
+
           {error && (
             <div
               role="alert"
@@ -307,7 +344,10 @@ export default function ChatPage() {
               ref={inputRef}
               value={input}
               maxLength={MAX_INPUT_CHARS}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                if (spamHint) setSpamHint(null);
+              }}
               onKeyDown={handleKeyDown}
               disabled={status !== 'ready'}
               rows={1}
