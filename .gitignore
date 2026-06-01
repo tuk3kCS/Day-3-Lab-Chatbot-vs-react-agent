@@ -5,3 +5,4 @@ __pycache__/
 .DS_Store
 models/
 vinwonders-agent/node_modules/
+./venv/

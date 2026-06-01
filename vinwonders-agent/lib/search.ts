@@ -1,3 +1,4 @@
+import { dedupeDestinations } from './dedupe-destinations';
 import { mockData, type Destination } from './mockData';
 
 const TYPE_LABELS: Record<Destination['type'], string> = {
@@ -45,11 +46,8 @@ export function searchDestinations({
     results = results.filter((d) => d.type === category);
   }
 
-  if (results.length === 0) {
-    results = mockData.filter((d) => matchesQuery(d, query.slice(0, 4)));
-  }
-
-  return results.slice(0, limit);
+  const deduped = dedupeDestinations(results, category);
+  return deduped.slice(0, limit);
 }
 
 export function findContactByPurpose(
@@ -100,8 +98,10 @@ export function extractSearchKeyword(text: string): {
   }
 
   for (const dest of mockData) {
-    const fragment = dest.name.toLowerCase().slice(0, 10);
-    if (fragment.length >= 4 && lower.includes(fragment)) {
+    const nameLower = dest.name.toLowerCase();
+    const words = nameLower.split(/\s+/).filter((w) => w.length >= 5);
+    const matched = words.some((word) => lower.includes(word));
+    if (matched) {
       return { keyword: dest.name, category: dest.type };
     }
   }

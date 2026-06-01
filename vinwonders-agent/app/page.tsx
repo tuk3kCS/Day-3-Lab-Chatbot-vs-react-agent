@@ -1,14 +1,26 @@
 'use client';
 
 import { ChatMessage, StreamingPlaceholder } from '@/components/chat/chat-message';
-import { ContextPanel } from '@/components/chat/context-panel';
-import { prepareConversationContext } from '@/lib/memory';
-import { useChat } from '@ai-sdk/react';
+import { ModelSelector } from '@/components/chat/model-selector';
 import {
+  ToolTracePanel,
+  ToolTraceToggle,
+} from '@/components/chat/tool-trace-panel';
+import { DEFAULT_OLLAMA_MODEL } from '@/lib/ollama-config';
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
+import type { BookingDetails } from '@/components/chat/booking-form';
+import { AGENT_LIMITS } from '@/lib/agent-policy';
+import { countConsecutiveIdenticalUserMessages } from '@/lib/tool-guard';
+import type { Destination } from '@/lib/mockData';
+import {
+  CalendarCheck,
+  CircleHelp,
   CloudRain,
   Compass,
   Hotel,
   Loader2,
+  RotateCcw,
   Send,
   ShieldAlert,
   Sparkles,
@@ -17,7 +29,15 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+const MAX_INPUT_CHARS = AGENT_LIMITS.maxUserMessageChars;
+
 const SUGGESTIONS = [
+  {
+    icon: CircleHelp,
+    label: 'Bạn giúp được gì?',
+    text: 'Bạn có thể giúp gì cho tôi tại VinWonders?',
+    accent: 'hover:border-zinc-500/40 hover:bg-zinc-800/40',
+  },
   {
     icon: ShieldAlert,
     label: 'Mất đồ khẩn cấp',
@@ -35,6 +55,12 @@ const SUGGESTIONS = [
     label: 'Khám phá Zeus',
     text: 'Giới thiệu tàu lượn Cơn thịnh nộ của Zeus',
     accent: 'hover:border-[var(--vw-gold)]/40 hover:bg-[var(--vw-gold)]/5',
+  },
+  {
+    icon: CalendarCheck,
+    label: 'Đặt bàn nhà hàng',
+    text: 'Đặt bàn Nhà hàng Hải Vương 4 người lúc 12:30',
+    accent: 'hover:border-emerald-500/40 hover:bg-emerald-950/20',
   },
   {
     icon: Hotel,
@@ -71,14 +97,24 @@ const STATUS_MAP = {
 
 export default function ChatPage() {
   const [input, setInput] = useState('');
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_OLLAMA_MODEL);
+  const [traceOpen, setTraceOpen] = useState(false);
+  const [spamHint, setSpamHint] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const { messages, sendMessage, status, error, stop, setMessages } = useChat();
+  const sendLockRef = useRef(false);
 
-  const context = useMemo(
-    () => prepareConversationContext(messages),
-    [messages],
+  const chatTransport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        body: { model: selectedModel },
+      }),
+    [selectedModel],
   );
+
+  const { messages, sendMessage, status, error, stop, setMessages } = useChat({
+    transport: chatTransport,
+  });
 
   const isBusy = status === 'submitted' || status === 'streaming';
   const statusInfo = STATUS_MAP[status] ?? STATUS_MAP.ready;
@@ -94,21 +130,57 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, status, scrollToBottom]);
 
+  useEffect(() => {
+    if (status === 'ready' || status === 'error') {
+      sendLockRef.current = false;
+    }
+  }, [status]);
+
   const sendText = useCallback(
     (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || status !== 'ready') return;
+      const trimmed = text.trim().slice(0, MAX_INPUT_CHARS);
+      if (!trimmed || status !== 'ready' || sendLockRef.current) return;
+
+      const pendingCount = countConsecutiveIdenticalUserMessages([
+        ...messages,
+        {
+          id: 'pending',
+          role: 'user',
+          parts: [{ type: 'text', text: trimmed }],
+        },
+      ]);
+      if (pendingCount >= AGENT_LIMITS.maxConsecutiveDuplicateUserMessages) {
+        setSpamHint(
+          'Bạn đã gửi cùng câu hỏi 3 lần liên tiếp. Vui lòng đợi hoặc đổi cách hỏi.',
+        );
+        return;
+      }
+
+      setSpamHint(null);
+      sendLockRef.current = true;
       sendMessage({ text: trimmed });
       setInput('');
       requestAnimationFrame(() => inputRef.current?.focus());
     },
-    [sendMessage, status],
+    [messages, sendMessage, status],
+  );
+
+  const handleConfirmBooking = useCallback(
+    (restaurant: Destination, details: BookingDetails) => {
+      const guestPart = details.guestName ? `, tên ${details.guestName}` : '';
+      const notesPart = details.notes ? `, ghi chú: ${details.notes}` : '';
+      sendText(
+        `Đặt bàn giúp mình tại ${restaurant.name} cho ${details.partySize} người lúc ${details.dateTime}${guestPart}${notesPart}`,
+      );
+    },
+    [sendText],
   );
 
   const handleClearSession = () => {
     if (isBusy) stop();
     setMessages([]);
     setInput('');
+    setSpamHint(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -128,9 +200,10 @@ export default function ChatPage() {
     isBusy && lastMessage?.role === 'user';
 
   return (
-    <div className="vw-app-bg flex h-full flex-col">
+    <div className="vw-app-bg flex h-full">
+      <div className="flex min-w-0 flex-1 flex-col">
       <header className="shrink-0 border-b border-[var(--vw-border)]/80 bg-[var(--vw-surface)]/80 px-4 py-3 backdrop-blur-md sm:px-6">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 lg:max-w-none lg:px-2">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--vw-gold)] to-[var(--vw-gold-dim)] shadow-lg shadow-amber-900/30">
               <Compass className="h-5 w-5 text-zinc-950" />
@@ -140,18 +213,40 @@ export default function ChatPage() {
                 VinWonders AI Agent
               </h1>
               <p className="truncate text-xs text-zinc-500">
-                Ollama · Memory + Context window
+                Trợ lý khách tham quan
               </p>
             </div>
           </div>
-          <span
-            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusInfo.className}`}
-          >
-            {isBusy && (
-              <Loader2 className="mr-1 inline h-3 w-3 animate-spin" aria-hidden />
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <ToolTraceToggle
+              open={traceOpen}
+              onToggle={() => setTraceOpen((v) => !v)}
+            />
+            <ModelSelector
+              value={selectedModel}
+              onChange={setSelectedModel}
+              disabled={isBusy}
+            />
+            {messages.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearSession}
+                disabled={isBusy}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--vw-border)] px-2.5 py-1 text-xs text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Phiên mới
+              </button>
             )}
-            {statusInfo.label}
-          </span>
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusInfo.className}`}
+            >
+              {isBusy && (
+                <Loader2 className="mr-1 inline h-3 w-3 animate-spin" aria-hidden />
+              )}
+              {statusInfo.label}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -160,13 +255,13 @@ export default function ChatPage() {
         className="vw-scrollbar flex-1 overflow-y-auto px-4 py-6 sm:px-6"
       >
         <div className="mx-auto flex max-w-3xl flex-col gap-6">
-          {messages.length > 0 && (
-            <ContextPanel
-              stats={context.stats}
-              memoryActive={Boolean(context.memorySummary)}
-              onClear={handleClearSession}
-              disabled={isBusy}
-            />
+          {spamHint && (
+            <div
+              role="status"
+              className="rounded-2xl border border-amber-800/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-200"
+            >
+              {spamHint}
+            </div>
           )}
 
           {error && (
@@ -175,7 +270,9 @@ export default function ChatPage() {
               className="rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-3 text-sm text-red-200"
             >
               <p className="font-medium">Không thể nhận phản hồi</p>
-              <p className="mt-1 text-red-300/90">{error.message}</p>
+              <p className="mt-1 text-red-300/90">
+                Vui lòng thử lại sau hoặc bấm Phiên mới.
+              </p>
             </div>
           )}
 
@@ -188,9 +285,8 @@ export default function ChatPage() {
                 Chào mừng đến VinWonders
               </h2>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-500">
-                Hệ thống có <strong className="text-zinc-400">bộ nhớ phiên</strong>{' '}
-                và <strong className="text-zinc-400">context window</strong> — chat
-                dài vẫn nhớ ticket / địa điểm đã gợi ý.
+                Tìm địa điểm, đặt bàn nhà hàng, gợi ý khi trời mưa và hỗ trợ sự cố khẩn cấp.
+                Bấm &quot;Bạn giúp được gì?&quot; để xem đầy đủ chức năng.
               </p>
               <div className="mt-6 grid w-full max-w-md gap-2">
                 {SUGGESTIONS.map((s) => (
@@ -227,6 +323,10 @@ export default function ChatPage() {
                 m.role === 'assistant' &&
                 m.id === lastMessage?.id
               }
+              onConfirmBooking={
+                status === 'ready' ? handleConfirmBooking : undefined
+              }
+              bookingDisabled={isBusy}
             />
           ))}
 
@@ -243,11 +343,16 @@ export default function ChatPage() {
             <textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              maxLength={MAX_INPUT_CHARS}
+              onChange={(e) => {
+                setInput(e.target.value);
+                if (spamHint) setSpamHint(null);
+              }}
               onKeyDown={handleKeyDown}
               disabled={status !== 'ready'}
               rows={1}
               placeholder="Nhập câu hỏi... (Enter gửi)"
+              aria-describedby="input-char-hint"
               className="max-h-32 min-h-[48px] w-full resize-none rounded-2xl border border-[var(--vw-border)] bg-[var(--vw-bg)] px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-[var(--vw-gold)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--vw-gold)]/20 disabled:opacity-50"
               onInput={(e) => {
                 const target = e.currentTarget;
@@ -255,6 +360,18 @@ export default function ChatPage() {
                 target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
               }}
             />
+            {input.length > MAX_INPUT_CHARS * 0.85 && (
+              <p
+                id="input-char-hint"
+                className={`absolute bottom-1 right-3 text-[10px] tabular-nums ${
+                  input.length >= MAX_INPUT_CHARS
+                    ? 'text-amber-400'
+                    : 'text-zinc-600'
+                }`}
+              >
+                {input.length}/{MAX_INPUT_CHARS}
+              </p>
+            )}
           </div>
 
           {isBusy ? (
@@ -278,6 +395,32 @@ export default function ChatPage() {
           )}
         </form>
       </footer>
+      </div>
+
+      <ToolTracePanel
+        messages={messages}
+        status={status}
+        modelId={selectedModel}
+        className="hidden w-80 shrink-0 border-l xl:w-96 lg:flex"
+      />
+
+      {traceOpen && (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+            aria-label="Đóng trace"
+            onClick={() => setTraceOpen(false)}
+          />
+          <ToolTracePanel
+            messages={messages}
+            status={status}
+            modelId={selectedModel}
+            onClose={() => setTraceOpen(false)}
+            className="fixed inset-y-0 right-0 z-50 w-[min(100%,20rem)] border-l shadow-2xl lg:hidden"
+          />
+        </>
+      )}
     </div>
   );
 }

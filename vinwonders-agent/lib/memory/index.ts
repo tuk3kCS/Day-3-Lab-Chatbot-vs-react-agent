@@ -31,7 +31,9 @@ export function prepareConversationContext(
     Math.max(0, conversational.length - windowMessages.length),
   );
 
-  const memoryFacts = extractSessionFacts(prunedMessages);
+  const memoryFacts = extractSessionFacts(
+    prunedMessages.length > 0 ? messages : [],
+  );
   const memorySummary = buildMemorySummary(memoryFacts);
 
   return {

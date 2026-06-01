@@ -7,9 +7,17 @@ from src.telemetry.logger import logger
 
 
 class ReActAgent:
-    """ReAct-style agent that follows the Thought-Action-Observation loop."""
+    """
+    ReAct-style Agent:
+    Thought -> Action -> Observation -> Final Answer
+    """
 
-    def __init__(self, llm: LLMProvider, tools: List[Dict[str, Any]], max_steps: int = 5):
+    def __init__(
+        self,
+        llm: LLMProvider,
+        tools: List[Dict[str, Any]],
+        max_steps: int = 5
+    ):
         self.llm = llm
         self.tools = tools
         self.max_steps = max_steps
@@ -17,167 +25,180 @@ class ReActAgent:
         self.trace: List[Dict[str, Any]] = []
 
     def get_system_prompt(self) -> str:
+        """
+        Build ReAct system prompt.
+        """
+
         tool_descriptions = "\n".join(
-            f"- {tool['name']}: {tool.get('description', 'No description provided')}"
-            for tool in self.tools
+            [
+                f"- {tool['name']}: {tool['description']}"
+                for tool in self.tools
+            ]
         )
 
-        return dedent(f"""
-            You are an intelligent assistant. You have access to the following tools:
-            {tool_descriptions}
+        return f"""
+You are a ReAct Agent.
 
-            Follow the ReAct pattern carefully.
-            When you need a tool, respond using the exact format:
-            Thought: <your reasoning>
-            Action: tool_name(arguments)
-            Observation: <tool result>
+Available tools:
+{tool_descriptions}
 
-            If a tool is unavailable, explain why and choose a valid tool.
-            If no tool is needed, return a Final Answer directly.
+You MUST follow this format exactly:
 
-            Repeat Thought/Action/Observation as needed.
-            When you are finished, answer with:
-            Final Answer: <your final response>
-        """)
+Thought: reasoning about the problem
+
+Action: tool_name(arguments)
+
+Observation: tool result
+
+(repeat if necessary)
+
+Final Answer: final response
+
+Rules:
+1. Always start with Thought.
+2. If you need external information, use an Action.
+3. Never invent Observations.
+4. Finish with Final Answer.
+"""
+
+    def _parse_action(self, text: str):
+        """
+        Extract:
+        Action: tool_name(arguments)
+        """
+
+        match = re.search(
+            r"Action:\s*(\w+)\((.*?)\)",
+            text,
+            re.DOTALL
+        )
+
+        if match:
+            return match.group(1), match.group(2)
+
+        return None, None
 
     def run(self, user_input: str) -> str:
-        logger.log_event("AGENT_START", {
-            "input": user_input,
-            "model": self.llm.model_name,
-            "max_steps": self.max_steps,
-        })
+        """
+        Main ReAct loop.
+        """
 
-        self.history = []
-        self.trace = []
-        prompt = user_input.strip()
+        logger.log_event(
+            "AGENT_START",
+            {
+                "input": user_input,
+                "model": self.llm.model_name
+            }
+        )
+
+        current_prompt = user_input
+
         steps = 0
 
         while steps < self.max_steps:
-            response = self.llm.generate(prompt, system_prompt=self.get_system_prompt())
-            content = response.get("content", "").strip()
-            logger.log_event("AGENT_STEP", {
-                "step": steps + 1,
-                "content": content,
-                "usage": response.get("usage"),
-                "latency_ms": response.get("latency_ms"),
-            })
 
-            if not content:
-                logger.log_event("AGENT_EMPTY_RESPONSE", {"step": steps + 1})
-                self.trace.append({"step": steps + 1, "status": "empty_response"})
-                break
+            response = self.llm.generate(
+                current_prompt,
+                system_prompt=self.get_system_prompt()
+            )
 
-            self.history.append({"role": "assistant", "content": content})
-            self.trace.append({"step": steps + 1, "assistant": content})
+            result = response["content"]
 
-            final_answer = self._extract_final_answer(content)
-            if final_answer:
-                logger.log_event("AGENT_FINAL_ANSWER", {
-                    "answer": final_answer,
-                    "steps": steps + 1,
-                })
-                self.trace.append({"step": steps + 1, "status": "final_answer", "final_answer": final_answer})
-                logger.log_event("AGENT_END", {"steps": steps + 1})
-                return final_answer
+            logger.log_event(
+                "LLM_RESPONSE",
+                {
+                    "step": steps,
+                    "response": result
+                }
+            )
 
-            action = self._parse_action(content)
-            if action is None:
-                parser_error = "Unable to parse Action from model output."
-                logger.log_event("AGENT_PARSE_ERROR", {
-                    "step": steps + 1,
-                    "content": content,
-                })
-                self.trace.append({"step": steps + 1, "status": "parse_error"})
-                self.history.append(
+            print(f"\n===== STEP {steps + 1} =====")
+            print(result)
+
+            # Final Answer
+            if "Final Answer:" in result:
+
+                final_answer = result.split(
+                    "Final Answer:",
+                    1
+                )[1].strip()
+
+                logger.log_event(
+                    "AGENT_END",
                     {
-                        "role": "tool",
-                        "name": "parser",
-                        "input": content,
-                        "output": parser_error,
+                        "steps": steps + 1,
+                        "status": "completed"
                     }
                 )
-                prompt = self._build_prompt(user_input, self.history)
-                steps += 1
-                continue
 
-            tool_name, args = action
-            observation = self._execute_tool(tool_name, args)
-            self.history.append(
-                {
-                    "role": "tool",
-                    "name": tool_name,
-                    "input": args,
-                    "output": observation,
-                }
-            )
-            self.trace.append(
-                {
-                    "step": steps + 1,
-                    "tool": tool_name,
-                    "args": args,
-                    "observation": observation,
-                }
-            )
+                return final_answer
 
-            prompt = self._build_prompt(user_input, self.history)
+            # Parse Action
+            tool_name, args = self._parse_action(result)
+
+            if tool_name:
+
+                observation = self._execute_tool(
+                    tool_name,
+                    args
+                )
+
+                logger.log_event(
+                    "TOOL_CALL",
+                    {
+                        "tool": tool_name,
+                        "args": args,
+                        "observation": observation
+                    }
+                )
+
+                current_prompt += (
+                    f"\n{result}\n"
+                    f"Observation: {observation}\n"
+                )
+
+            else:
+
+                current_prompt += (
+                    f"\n{result}\n"
+                )
+
             steps += 1
 
-        logger.log_event("AGENT_END", {"steps": steps})
-        return content or "I could not produce a final answer."
-
-    def get_trace(self) -> List[Dict[str, Any]]:
-        """Return a copy of the execution trace for analysis."""
-        return self.trace.copy()
-
-    def _build_prompt(self, user_input: str, history: List[Dict[str, Any]]) -> str:
-        prompt_lines = [user_input.strip()]
-        for entry in history:
-            if entry["role"] == "assistant":
-                prompt_lines.append(entry["content"].strip())
-            elif entry["role"] == "tool":
-                prompt_lines.append(f"Observation: {entry['output'].strip()}")
-        return "\n".join(prompt_lines)
-
-    def _parse_action(self, content: str) -> Optional[Tuple[str, str]]:
-        action_match = re.search(
-            r"Action:\s*([A-Za-z0-9_]+)(?:\s*\((.*?)\))?",
-            content,
-            re.DOTALL,
+        logger.log_event(
+            "AGENT_END",
+            {
+                "steps": steps,
+                "status": "max_steps_reached"
+            }
         )
-        if not action_match:
-            return None
 
-        tool_name = action_match.group(1).strip()
-        args = action_match.group(2) or ""
-        return tool_name, args.strip()
+        return "Maximum reasoning steps reached."
 
-    def _extract_final_answer(self, content: str) -> Optional[str]:
-        final_match = re.search(r"Final Answer:\s*(.*)", content, re.DOTALL)
-        if not final_match:
-            return None
+    def _execute_tool(
+        self,
+        tool_name: str,
+        args: str
+    ) -> str:
+        """
+        Execute tool by name.
+        """
 
-        return final_match.group(1).strip()
-
-    def _execute_tool(self, tool_name: str, args: str) -> str:
         for tool in self.tools:
-            if tool.get("name") != tool_name:
-                continue
 
-            executor = tool.get("function") or tool.get("execute") or tool.get("callable")
-            if callable(executor):
+            if tool["name"] == tool_name:
+
                 try:
-                    return executor(args)
-                except Exception as exc:
-                    error_message = f"Tool {tool_name} failed: {exc}"
-                    logger.log_event("AGENT_TOOL_ERROR", {"tool": tool_name, "args": args, "error": str(exc)})
-                    return error_message
 
-            return f"Tool {tool_name} has no executable function."
+                    if "function" in tool:
+                        return str(
+                            tool["function"](args)
+                        )
 
-        available_tools = ", ".join(tool.get("name") for tool in self.tools if tool.get("name"))
-        logger.log_event("AGENT_TOOL_HALLUCINATION", {
-            "tool": tool_name,
-            "args": args,
-            "available_tools": available_tools,
-        })
-        return f"Tool {tool_name} not found. Available tools: {available_tools}."
+                    return f"Executed {tool_name}"
+
+                except Exception as e:
+
+                    return f"Tool Error: {str(e)}"
+
+        return f"Tool '{tool_name}' not found."

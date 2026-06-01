@@ -3,8 +3,13 @@
 import type { UIMessage } from 'ai';
 import { Bot, User } from 'lucide-react';
 import type { EmergencyResult, SearchResult, TransportTicketResult } from './types';
+import type { Destination } from '@/lib/mockData';
+import type { EmergencyResult, ReservationResult, SearchResult } from './types';
+import { dedupeToolPartsForRender } from '@/lib/message-parts';
+import type { BookingDetails } from './tool-cards';
 import {
   EmergencyCard,
+  ReservationCard,
   SearchDestinationCards,
   ToolLoadingCard,
   TransportTicketCard,
@@ -23,11 +28,18 @@ function TypingIndicator() {
 export function ChatMessage({
   message,
   isStreaming,
+  onConfirmBooking,
+  bookingDisabled,
 }: {
   message: UIMessage;
   isStreaming?: boolean;
+  onConfirmBooking?: (restaurant: Destination, details: BookingDetails) => void;
+  bookingDisabled?: boolean;
 }) {
   const isUser = message.role === 'user';
+  const renderParts = isUser
+    ? message.parts
+    : dedupeToolPartsForRender(message.parts);
 
   return (
     <div
@@ -57,7 +69,7 @@ export function ChatMessage({
           {isUser ? 'Bạn' : 'VinWonders AI'}
         </span>
 
-        {message.parts.map((part, index) => {
+        {renderParts.map((part, index) => {
           if (part.type === 'text') {
             const text = part.text;
             const isEmpty = !text.trim();
@@ -72,7 +84,7 @@ export function ChatMessage({
                 className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                   isUser
                     ? 'rounded-br-md bg-[var(--vw-gold)] text-zinc-950 shadow-md shadow-amber-900/20'
-                    : 'rounded-bl-md border border-[var(--vw-border)] bg-[var(--vw-surface)] text-zinc-100'
+                    : 'whitespace-pre-wrap rounded-bl-md border border-[var(--vw-border)] bg-[var(--vw-surface)] text-zinc-100'
                 }`}
               >
                 {text}
@@ -92,6 +104,24 @@ export function ChatMessage({
                 <SearchDestinationCards
                   key={index}
                   result={part.output as SearchResult}
+                  onConfirmBooking={onConfirmBooking}
+                  bookingDisabled={bookingDisabled}
+                />
+              );
+            }
+          }
+
+          if (part.type === 'tool-bookRestaurant') {
+            if (part.state === 'input-available' || part.state === 'input-streaming') {
+              return (
+                <ToolLoadingCard key={index} label="Đang đặt bàn cho bạn..." />
+              );
+            }
+            if (part.state === 'output-available') {
+              return (
+                <ReservationCard
+                  key={index}
+                  result={part.output as ReservationResult}
                 />
               );
             }

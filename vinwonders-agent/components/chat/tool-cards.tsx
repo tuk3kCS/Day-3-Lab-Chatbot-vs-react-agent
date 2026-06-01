@@ -1,7 +1,10 @@
+import { RestaurantBookingForm, type BookingDetails } from './booking-form';
 import { TYPE_LABELS } from '@/lib/search';
 import type { Destination } from '@/lib/mockData';
+import { useState } from 'react';
 import {
   Bus,
+  CalendarCheck,
   Clock,
   Loader2,
   MapPin,
@@ -11,6 +14,11 @@ import {
   Ticket,
 } from 'lucide-react';
 import type { EmergencyResult, SearchResult, TransportTicketResult } from './types';
+  Users,
+} from 'lucide-react';
+import type { EmergencyResult, ReservationResult, SearchResult } from './types';
+
+export type { BookingDetails };
 
 const TYPE_STYLES: Record<Destination['type'], string> = {
   ride: 'bg-purple-500/15 text-purple-300',
@@ -30,7 +38,17 @@ export function ToolLoadingCard({ label }: { label: string }) {
   );
 }
 
-function DestinationCard({ dest }: { dest: Destination }) {
+function DestinationCard({
+  dest,
+  onConfirmBooking,
+  bookingDisabled,
+}: {
+  dest: Destination;
+  onConfirmBooking?: (restaurant: Destination, details: BookingDetails) => void;
+  bookingDisabled?: boolean;
+}) {
+  const [showBookingForm, setShowBookingForm] = useState(false);
+
   return (
     <article className="rounded-2xl border border-[var(--vw-border)] bg-[var(--vw-surface)] p-4 shadow-sm transition hover:border-[var(--vw-gold)]/30">
       <div className="mb-2 flex flex-wrap items-start gap-2">
@@ -72,19 +90,64 @@ function DestinationCard({ dest }: { dest: Destination }) {
           <span className="font-medium text-[var(--vw-gold-dim)]">Mẹo:</span> {dest.tip}
         </p>
       )}
+
+      {dest.type === 'restaurant' && onConfirmBooking && !showBookingForm && (
+        <button
+          type="button"
+          disabled={bookingDisabled}
+          onClick={() => setShowBookingForm(true)}
+          className="mt-3 w-full rounded-xl bg-[var(--vw-gold)]/15 py-2.5 text-sm font-medium text-[var(--vw-gold)] ring-1 ring-[var(--vw-gold)]/30 transition hover:bg-[var(--vw-gold)]/25 disabled:opacity-50"
+        >
+          Đặt bàn tại đây
+        </button>
+      )}
+
+      {showBookingForm && onConfirmBooking && (
+        <RestaurantBookingForm
+          restaurant={dest}
+          disabled={bookingDisabled}
+          onCancel={() => setShowBookingForm(false)}
+          onConfirm={(details) => {
+            onConfirmBooking(dest, details);
+            setShowBookingForm(false);
+          }}
+        />
+      )}
     </article>
   );
 }
 
-export function SearchDestinationCards({ result }: { result: SearchResult }) {
+export function SearchDestinationCards({
+  result,
+  onConfirmBooking,
+  bookingDisabled,
+}: {
+  result: SearchResult;
+  onConfirmBooking?: (restaurant: Destination, details: BookingDetails) => void;
+  bookingDisabled?: boolean;
+}) {
+  const seen = new Set<string>();
+  const unique = result.results.filter((dest) => {
+    if (seen.has(dest.id)) return false;
+    seen.add(dest.id);
+    return true;
+  });
+
   return (
     <div className="space-y-2.5">
       <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-[var(--vw-gold)]">
         <Sparkles className="h-3.5 w-3.5" />
-        Gợi ý ({result.results.length})
+        Gợi ý ({unique.length})
       </p>
-      {result.results.map((dest) => (
-        <DestinationCard key={dest.id} dest={dest} />
+      {unique.map((dest) => (
+        <DestinationCard
+          key={dest.id}
+          dest={dest}
+          onConfirmBooking={
+            dest.type === 'restaurant' ? onConfirmBooking : undefined
+          }
+          bookingDisabled={bookingDisabled}
+        />
       ))}
     </div>
   );
@@ -151,6 +214,46 @@ export function TransportTicketCard({ result }: { result: TransportTicketResult 
           <span className="text-xs text-zinc-400">Tổng thanh toán</span>
           <span className="text-base font-bold text-emerald-300">{priceText}</span>
         </div>
+export function ReservationCard({ result }: { result: ReservationResult }) {
+  const isConfirmed = result.status === 'confirmed';
+
+  return (
+    <article className="overflow-hidden rounded-2xl border border-emerald-800/50 bg-gradient-to-br from-emerald-950/60 to-[var(--vw-surface)]">
+      <div className="flex items-center gap-2 border-b border-emerald-800/40 bg-emerald-900/25 px-4 py-3">
+        <CalendarCheck className="h-5 w-5 text-emerald-400" />
+        <span className="text-sm font-bold text-emerald-300">
+          {isConfirmed ? 'Đặt bàn thành công' : 'Đang chờ xác nhận'}
+        </span>
+      </div>
+      <div className="space-y-3 p-4">
+        <p className="text-xs uppercase tracking-wider text-zinc-500">Mã đặt bàn</p>
+        <p className="font-mono text-2xl font-bold tracking-wider text-emerald-200">
+          {result.bookingCode}
+        </p>
+        <div className="rounded-xl border border-[var(--vw-border)] bg-[var(--vw-surface-elevated)] px-3 py-2.5">
+          <p className="font-semibold text-zinc-100">{result.restaurant.name}</p>
+          {result.restaurant.location && (
+            <p className="mt-1 text-xs text-zinc-500">{result.restaurant.location}</p>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div className="rounded-lg bg-[var(--vw-bg)] px-3 py-2">
+            <p className="text-[10px] uppercase text-zinc-600">Khách</p>
+            <p className="text-zinc-200">{result.guestName}</p>
+          </div>
+          <div className="rounded-lg bg-[var(--vw-bg)] px-3 py-2">
+            <p className="flex items-center gap-1 text-[10px] uppercase text-zinc-600">
+              <Users className="h-3 w-3" /> Số người
+            </p>
+            <p className="text-zinc-200">{result.partySize}</p>
+          </div>
+        </div>
+        <p className="flex items-center gap-1.5 text-sm text-[var(--vw-gold)]">
+          <Clock className="h-4 w-4" />
+          {result.dateTime}
+        </p>
+        <p className="text-sm leading-relaxed text-zinc-400">{result.message}</p>
+        <p className="text-center text-xs text-zinc-600">{result.qrHint}</p>
       </div>
     </article>
   );
