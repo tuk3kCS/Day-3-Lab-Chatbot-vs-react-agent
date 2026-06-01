@@ -1,8 +1,16 @@
 # Group Report: Lab 3 - Production-Grade Agentic System
 
-- **Team Name**: [Name]
-- **Team Members**: [Member 1, Member 2, ...]
-- **Deployment Date**: [YYYY-MM-DD]
+- **Team Name**: [Table D1]
+- **Team Members**: 
+
+| No. | Full Name | Student ID |
+|:---:|------------|------------|
+| 1 | Trần Hoàng Hà | 2A202600612 |
+| 2 | Hoàng Đức Trường | 2A202600552 |
+| 3 | Nguyễn Hồ Diệu Linh | 2A202600567 |
+| 4 | Nguyễn Thị Bích Duyên | 2A202600752 |
+| 5 | Nguyễn Thị Hiểu | 2A202600545 |
+| 6 | Nguyễn Hoàng Tùng | 2A202600628 |
 
 ---
 
