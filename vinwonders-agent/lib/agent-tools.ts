@@ -114,7 +114,7 @@ export function detectServerTool(text: string): ServerTool | null {
   }
 
   // 4) Tìm kiếm địa điểm chung
-  if (SEARCH_FALLBACK.test(lower) && !SORRY _FALLBACK.test(lower)) {
+  if (SEARCH_FALLBACK.test(lower) && !SORRY_FALLBACK.test(lower)) {
     const { keyword, category } = extractSearchKeyword(trimmed);
     return {
       name: 'searchDestination',
