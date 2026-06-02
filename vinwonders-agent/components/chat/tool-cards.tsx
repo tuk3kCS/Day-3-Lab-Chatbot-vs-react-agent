@@ -6,11 +6,13 @@ import {
   Bus,
   CalendarCheck,
   Clock,
+  Cloud,
   Loader2,
   MapPin,
   Phone,
   ShieldAlert,
   Sparkles,
+  Tag,
   Ticket,
   Users,
 } from 'lucide-react';
@@ -18,7 +20,9 @@ import type {
   EmergencyResult,
   ReservationResult,
   SearchResult,
+  TicketResult,
   TransportTicketResult,
+  WeatherResult,
 } from './types';
 
 export type { BookingDetails };
@@ -297,6 +301,60 @@ export function EmergencyCard({ result }: { result: EmergencyResult }) {
               </p>
             )}
           </div>
+        )}
+      </div>
+    </article>
+  );
+}
+export function WeatherCard({ result }: { result: WeatherResult }) {
+  return (
+    <article className="overflow-hidden rounded-2xl border border-sky-800/60 bg-gradient-to-br from-sky-950/80 to-sky-950/40">
+      <div className="flex items-center gap-2 border-b border-sky-800/40 bg-sky-900/30 px-4 py-3">
+        <Cloud className="h-5 w-5 text-sky-400" />
+        <span className="text-sm font-bold tracking-wide text-sky-300">
+          Thời tiết hiện tại
+        </span>
+      </div>
+      <div className="space-y-3 p-4">
+        <div className="flex items-center gap-2 text-zinc-400 text-sm">
+          <MapPin className="h-4 w-4 text-sky-400 shrink-0" />
+          <span className="font-medium text-zinc-200">{result.location}</span>
+        </div>
+        <p className="text-2xl font-bold text-sky-200 leading-snug">
+          {result.weather}
+        </p>
+      </div>
+    </article>
+  );
+}
+
+export function TicketCard({ result }: { result: TicketResult }) {
+  return (
+    <article className="overflow-hidden rounded-2xl border border-amber-800/60 bg-gradient-to-br from-amber-950/80 to-amber-950/40">
+      <div className="flex items-center gap-2 border-b border-amber-800/40 bg-amber-900/30 px-4 py-3">
+        <Tag className="h-5 w-5 text-amber-400" />
+        <span className="text-sm font-bold tracking-wide text-amber-300">
+          Giá vé tham quan
+        </span>
+      </div>
+      <div className="space-y-3 p-4">
+        <p className="font-semibold text-zinc-100">{result.destination}</p>
+        <div className="rounded-xl border border-amber-800/40 bg-amber-950/50 px-3 py-2.5 space-y-2 text-sm">
+          <div className="flex justify-between text-zinc-300">
+            <span className="text-zinc-500">Người lớn</span>
+            <span className="font-medium text-amber-200">{result.prices.adult}</span>
+          </div>
+          <div className="flex justify-between text-zinc-300">
+            <span className="text-zinc-500">Trẻ em</span>
+            <span className="font-medium text-amber-200">{result.prices.child}</span>
+          </div>
+          <div className="flex justify-between text-zinc-300">
+            <span className="text-zinc-500">Cao tuổi</span>
+            <span className="font-medium text-amber-200">{result.prices.senior}</span>
+          </div>
+        </div>
+        {result.note && (
+          <p className="text-xs text-zinc-500">{result.note}</p>
         )}
       </div>
     </article>

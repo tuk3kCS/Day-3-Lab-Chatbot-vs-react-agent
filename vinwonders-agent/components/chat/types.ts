@@ -46,3 +46,18 @@ export type ReservationResult = {
   message: string;
   qrHint: string;
 };
+
+export type WeatherResult = {
+  location: string;
+  weather: string;
+};
+
+export type TicketResult = {
+  destination: string;
+  prices: {
+    adult: string;
+    child: string;
+    senior: string;
+  };
+  note: string;
+};

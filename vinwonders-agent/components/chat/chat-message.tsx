@@ -7,7 +7,9 @@ import type {
   EmergencyResult,
   ReservationResult,
   SearchResult,
+  TicketResult,
   TransportTicketResult,
+  WeatherResult,
 } from './types';
 import { dedupeToolPartsForRender } from '@/lib/message-parts';
 import type { BookingDetails } from './tool-cards';
@@ -15,9 +17,12 @@ import {
   EmergencyCard,
   ReservationCard,
   SearchDestinationCards,
+  TicketCard,
   ToolLoadingCard,
   TransportTicketCard,
+  WeatherCard,
 } from './tool-cards';
+
 
 function TypingIndicator() {
   return (
@@ -44,17 +49,16 @@ export function ChatMessage({
   const renderParts = isUser
     ? message.parts
     : dedupeToolPartsForRender(message.parts);
-
+  console.log('MESSAGE PARTS:', message.parts);
   return (
     <div
       className={`vw-message-in flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}
     >
       <div
-        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-          isUser
-            ? 'bg-zinc-800 ring-1 ring-zinc-700'
-            : 'bg-[var(--vw-gold)]/15 ring-1 ring-[var(--vw-gold)]/25'
-        }`}
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isUser
+          ? 'bg-zinc-800 ring-1 ring-zinc-700'
+          : 'bg-[var(--vw-gold)]/15 ring-1 ring-[var(--vw-gold)]/25'
+          }`}
         aria-hidden
       >
         {isUser ? (
@@ -65,9 +69,8 @@ export function ChatMessage({
       </div>
 
       <div
-        className={`flex min-w-0 max-w-[min(85%,32rem)] flex-col gap-2 ${
-          isUser ? 'items-end' : 'items-start'
-        }`}
+        className={`flex min-w-0 max-w-[min(85%,32rem)] flex-col gap-2 ${isUser ? 'items-end' : 'items-start'
+          }`}
       >
         <span className="px-1 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
           {isUser ? 'Bạn' : 'VinWonders AI'}
@@ -85,11 +88,10 @@ export function ChatMessage({
             return (
               <div
                 key={index}
-                className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                  isUser
-                    ? 'rounded-br-md bg-[var(--vw-gold)] text-zinc-950 shadow-md shadow-amber-900/20'
-                    : 'whitespace-pre-wrap rounded-bl-md border border-[var(--vw-border)] bg-[var(--vw-surface)] text-zinc-100'
-                }`}
+                className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${isUser
+                  ? 'rounded-br-md bg-[var(--vw-gold)] text-zinc-950 shadow-md shadow-amber-900/20'
+                  : 'whitespace-pre-wrap rounded-bl-md border border-[var(--vw-border)] bg-[var(--vw-surface)] text-zinc-100'
+                  }`}
               >
                 {text}
                 {isStreamingText && !text && <TypingIndicator />}
@@ -157,7 +159,31 @@ export function ChatMessage({
               );
             }
           }
+          if (part.type === 'tool-weather') {
+            if (part.state === 'input-available' || part.state === 'input-streaming') {
+              return (
+                <ToolLoadingCard key={index} label="Đang lấy thời tiết..." />
+              );
+            }
+            if (part.state === 'output-available') {
+              return (
+                <WeatherCard key={index} result={part.output as WeatherResult} />
+              );
+            }
+          }
 
+          if (part.type === 'tool-searchTicket') {
+            if (part.state === 'input-available' || part.state === 'input-streaming') {
+              return (
+                <ToolLoadingCard key={index} label="Đang tra cứu giá vé..." />
+              );
+            }
+            if (part.state === 'output-available') {
+              return (
+                <TicketCard key={index} result={part.output as TicketResult} />
+              );
+            }
+          }
           return null;
         })}
       </div>
